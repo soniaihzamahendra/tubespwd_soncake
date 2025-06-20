@@ -132,7 +132,6 @@ try {
                 padding: 6px 10px;
             }
         }
-        /* CSS khusus untuk memperbaiki teks status yang tidak terlihat */
 .order-status {
     font-weight: 500;
     padding: 5px 10px;
@@ -143,10 +142,9 @@ try {
     text-align: center;
 }
 
-/* Warna status dengan kontras teks yang baik */
 .status-Pending { 
     background-color: #FFC107; 
-    color: #000; /* Hitam untuk kontras di kuning */
+    color: #000; 
 }
 .status-Processing { 
     background-color: #17A2B8; 

@@ -1,11 +1,11 @@
 <?php
 session_start();
 require_once 'config/database.php';
-require_once 'includes/cart_functions.php'; // Pastikan ini di-include
+require_once 'includes/cart_functions.php'; 
 
 $username = '';
 $isLoggedIn = false;
-$userId = null; // Inisialisasi userId
+$userId = null; 
 
 if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['role'] === 'user') {
     $username = htmlspecialchars($_SESSION['username']);
@@ -13,12 +13,10 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['ro
     $userId = $_SESSION['user_id'];
 }
 
-// Gunakan fungsi terpusat untuk menghitung jumlah keranjang
-// Ini akan mengambil dari database jika login, dari sesi jika tamu.
 $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
 
 
-$sql_products = "SELECT id, name, image_url, price, description, rating, stock FROM products"; // Tambahkan stock
+$sql_products = "SELECT id, name, image_url, price, description, rating, stock FROM products";
 $params = [];
 $where_clauses = [];
 
@@ -33,11 +31,9 @@ if (isset($_GET['category_name']) && !empty($_GET['category_name'])) {
             $where_clauses[] = "category_id = ?";
             $params[] = $category_info['id'];
         } else {
-            // Kategori tidak ditemukan, biarkan $where_clauses kosong agar menampilkan semua produk jika kategori tidak valid
         }
     } catch (PDOException $e) {
         error_log("Error fetching category ID: " . $e->getMessage());
-        // Handle error, e.g., display a message
     }
 }
 
@@ -353,7 +349,6 @@ try {
             }
         }
 
-        // Inisialisasi bubble keranjang saat halaman dimuat
         if (cartCountSpan) {
             const initialCount = parseInt(cartCountSpan.textContent);
             updateCartCountDisplay(initialCount);
@@ -363,10 +358,9 @@ try {
             cartLink.addEventListener('click', function(event) {
                 if (!isLoggedIn) {
                     event.preventDefault();
-                    // Menggunakan modal kustom atau pop-up daripada alert()
                     alert("Anda harus login terlebih dahulu untuk mengakses keranjang.");
-                    sessionStorage.setItem('intended_url', window.location.href); // Simpan URL saat ini
-                    window.location.href = 'login.php'; // Redirect ke halaman login
+                    sessionStorage.setItem('intended_url', window.location.href); 
+                    window.location.href = 'login.php'; 
                 }
             });
         }
@@ -404,7 +398,6 @@ try {
             }
         });
 
-        // Event listener untuk tombol "Tambah ke Keranjang" di halaman katalog
         const addToCartButtons = document.querySelectorAll('.add-to-cart-btn');
 
         addToCartButtons.forEach(button => {
@@ -419,7 +412,7 @@ try {
                 }
 
                 const productId = this.dataset.productId;
-                const quantity = 1; // Default quantity 1
+                const quantity = 1; 
 
                 fetch('add_to_cart.php', {
                     method: 'POST',
@@ -440,7 +433,7 @@ try {
                 .then(data => {
                     if (data.success) {
                         alert(data.message);
-                        updateCartCountDisplay(data.total_cart_items); // Update bubble
+                        updateCartCountDisplay(data.total_cart_items); 
                     } else {
                         alert('Gagal menambahkan ke keranjang: ' + data.message);
                     }

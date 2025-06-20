@@ -1,7 +1,7 @@
 <?php
 session_start();
 require_once 'config/database.php';
-require_once 'includes/cart_functions.php'; // Pastikan ini di-include
+require_once 'includes/cart_functions.php'; 
 
 $product = null;
 $error_message = '';
@@ -10,8 +10,6 @@ $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'user';
 $username = $isLoggedIn ? htmlspecialchars($_SESSION['username']) : '';
 $userId = $isLoggedIn ? $_SESSION['user_id'] : null;
 
-// Gunakan fungsi terpusat untuk menghitung jumlah keranjang
-// Ini akan mengambil dari database jika login, dari sesi jika tamu.
 $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
 
 
@@ -439,7 +437,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Panggil ini saat halaman dimuat untuk menampilkan jumlah awal
     if (cartCountSpan) {
         const initialCount = parseInt(cartCountSpan.textContent);
         updateCartCountDisplay(initialCount);
@@ -492,14 +489,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (submitButton) {
                 submitButton.disabled = true;
-                submitButton.textContent = 'Menambahkan...'; // Mengubah teks tombol saat proses
+                submitButton.textContent = 'Menambahkan...'; 
             }
 
             try {
-                const formData = new FormData(this); // Mengambil data form
+                const formData = new FormData(this); 
                 const response = await fetch('add_to_cart.php', {
                     method: 'POST',
-                    body: new URLSearchParams(formData) // Menggunakan URLSearchParams untuk format x-www-form-urlencoded
+                    body: new URLSearchParams(formData) 
                 });
 
                 if (!response.ok) {
@@ -512,7 +509,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     addToCartMessageDiv.textContent = data.message;
                     addToCartMessageDiv.classList.add('show', 'success');
-                    updateCartCountDisplay(data.total_cart_items); // Perbarui bubble keranjang
+                    updateCartCountDisplay(data.total_cart_items); 
                 } else {
                     addToCartMessageDiv.textContent = data.message || 'Terjadi kesalahan saat menambahkan produk ke keranjang.';
                     addToCartMessageDiv.classList.add('show', 'error');
@@ -522,7 +519,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 addToCartMessageDiv.textContent = 'Kesalahan jaringan atau server: ' + error.message;
                 addToCartMessageDiv.classList.add('show', 'error');
             } finally {
-                // Selalu aktifkan kembali tombol setelah proses selesai
                 if (submitButton) {
                     submitButton.disabled = false;
                     submitButton.innerHTML = '<i class="fas fa-cart-plus"></i> ' + (productStock <= 0 ? 'Stok Habis' : 'Tambah ke Keranjang');

@@ -255,7 +255,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $product) {
             border: 1px solid #eee;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
-        /* CSS khusus untuk tombol edit/simpan */
+     
 .product-form-container button[type="submit"] {
     background-color: #ff6b81;
     color: #fff;

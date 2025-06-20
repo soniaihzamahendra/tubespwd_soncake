@@ -1,12 +1,8 @@
 <?php
 session_start();
-// Pastikan jalur ini sesuai dengan struktur folder Anda.
-// Asumsi: file ini berada di folder root proyek Anda, sama dengan 'config' dan 'includes'.
 require_once 'config/database.php';
 require_once 'includes/cart_functions.php';
 
-// Menonaktifkan laporan error untuk lingkungan produksi.
-// Aktifkan kembali (error_reporting(E_ALL); ini_set('display_errors', 1);) hanya jika debugging diperlukan.
 ini_set('display_errors', 0);
 ini_set('display_startup_errors', 0);
 error_reporting(0);
@@ -26,7 +22,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $new_password = $_POST['new_password'] ?? '';
     $confirm_new_password = $_POST['confirm_new_password'] ?? '';
 
-    // Validasi input
     if (empty($current_password) || empty($new_password) || empty($confirm_new_password)) {
         $error_message = "Semua field harus diisi.";
     } elseif ($new_password !== $confirm_new_password) {
@@ -35,58 +30,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error_message = "Password baru minimal 6 karakter.";
     } else {
         try {
-            // Ambil hash password pengguna saat ini dari database
             $stmt = $pdo->prepare("SELECT password_hash FROM users WHERE id = ?");
             $stmt->execute([$user_id]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$user) {
-                // Jika data pengguna tidak ditemukan, artinya sesi mungkin rusak atau user_id tidak valid
-                session_destroy(); // Hancurkan sesi untuk keamanan
+                session_destroy();
                 header("Location: login.php?error=User_data_corrupted");
                 exit();
             }
 
-            // Memverifikasi password saat ini
             if (password_verify($current_password, $user['password_hash'])) {
-                // Hash password baru
                 $new_password_hash = password_hash($new_password, PASSWORD_DEFAULT);
 
-                // Perbarui password di database
                 $stmt_update = $pdo->prepare("UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?");
                 $stmt_update->execute([$new_password_hash, $user_id]);
 
-                // Periksa apakah ada baris yang terpengaruh (password berhasil diubah)
                 if ($stmt_update->rowCount() > 0) {
                     $success_message = "Password berhasil diperbarui!";
                 } else {
-                    // Ini bisa terjadi jika password baru sama dengan yang lama, atau masalah lain yang tidak memicu exception
                     $error_message = "Tidak ada perubahan password terdeteksi. Mungkin password baru sama dengan password lama Anda.";
-                    error_log("Password update resulted in 0 row count for user_id: " . $user_id); // Tetap log di server
+                    error_log("Password update resulted in 0 row count for user_id: " . $user_id);
                 }
             } else {
                 $error_message = "Password saat ini salah. Mohon periksa kembali.";
-                error_log("Password verification failed for user_id: " . $user_id); // Tetap log di server
+                error_log("Password verification failed for user_id: " . $user_id);
             }
 
         } catch (PDOException $e) {
-            // Tangani kesalahan database
             error_log("Error changing password (PDOException): " . $e->getMessage() . " for user_id: " . $user_id);
             $error_message = "Terjadi kesalahan database saat memperbarui password. Silakan coba lagi.";
         } catch (Exception $e) {
-            // Tangani kesalahan umum lainnya
             error_log("General error changing password: " . $e->getMessage() . " for user_id: " . $user_id);
             $error_message = "Terjadi kesalahan yang tidak terduga saat memperbarui password. Silakan coba lagi.";
         }
     }
 }
 
-// Data untuk header navigasi
 $username_header = isset($_SESSION['username']) ? htmlspecialchars($_SESSION['username']) : '';
-$isLoggedIn_header = isset($_SESSION['user_id']) && $_SESSION['role'] === 'user'; // Asumsi untuk header user
+$isLoggedIn_header = isset($_SESSION['user_id']) && $_SESSION['role'] === 'user';
 $cart_count_header = 0;
 if ($isLoggedIn_header) {
-    // Fungsi ini diasumsikan ada di includes/cart_functions.php
     $cart_count_header = calculateTotalCartItems($pdo, $isLoggedIn_header, $_SESSION['user_id']);
 }
 ?>
@@ -247,13 +231,12 @@ if ($isLoggedIn_header) {
                     <?php endif; ?>
 
                     <?php
-                    // Cek dan tampilkan pesan dari sesi (jika ada, mungkin dari skrip lain)
                     if (isset($_SESSION['message'])) {
                         $session_message = $_SESSION['message'];
-                        $session_message_type = $_SESSION['message_type'] ?? 'error'; // Default ke error jika type tidak diset
+                        $session_message_type = $_SESSION['message_type'] ?? 'error';
                         echo '<div class="message ' . htmlspecialchars($session_message_type) . '-message">' . htmlspecialchars($session_message) . '</div>';
-                        unset($_SESSION['message']); // Hapus pesan setelah ditampilkan
-                        unset($_SESSION['message_type']); // Hapus tipe pesan
+                        unset($_SESSION['message']);
+                        unset($_SESSION['message_type']);
                     }
                     ?>
 
@@ -313,7 +296,6 @@ if ($isLoggedIn_header) {
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Handle dropdowns
             const dropdowns = document.querySelectorAll('.dropdown');
             dropdowns.forEach(dropdown => {
                 const dropbtn = dropdown.querySelector('.dropbtn');
@@ -347,19 +329,18 @@ if ($isLoggedIn_header) {
                 }
             });
 
-            // Optional: Hide messages after a few seconds
             const successMessage = document.querySelector('.success-message');
             const errorMessage = document.querySelector('.error-message');
 
             if (successMessage) {
                 setTimeout(() => {
                     successMessage.style.display = 'none';
-                }, 5000); // Hide after 5 seconds
+                }, 5000);
             }
             if (errorMessage) {
                 setTimeout(() => {
                     errorMessage.style.display = 'none';
-                }, 5000); // Hide after 5 seconds
+                }, 5000);
             }
         });
     </script>

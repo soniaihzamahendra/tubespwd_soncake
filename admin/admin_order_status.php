@@ -41,7 +41,6 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
 if ($_SERVER["REQUEST_METHOD"] == "POST" && $order_id !== null) {
     $new_status = trim($_POST['status']);
 
-    // Validasi status baru
     if (!in_array($new_status, $possible_statuses)) {
         $message = "Status yang dipilih tidak valid.";
         $message_type = "error";

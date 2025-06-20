@@ -8,8 +8,6 @@ $error_message = '';
 $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'user';
 $username = $isLoggedIn ? htmlspecialchars($_SESSION['username']) : '';
 
-// Function to calculate total cart items (either from DB or session)
-// This function needs to be available on pages that display the cart count
 function calculateTotalCartItems($pdo, $isLoggedIn, $userId) {
     $total_items = 0;
     if ($isLoggedIn) {
@@ -227,22 +225,21 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
             font-size: 1.2em;
         }
 
-        /* Cart count styling */
         .cart-link-wrapper {
             position: relative;
             display: inline-block;
         }
 
         .cart-count {
-            background-color: var(--primary-pink); /* Or any color you prefer */
+            background-color: var(--primary-pink);
             color: white;
             border-radius: 50%;
             padding: 2px 7px;
             font-size: 0.75em;
             position: absolute;
-            top: -8px; /* Adjust as needed */
-            right: -10px; /* Adjust as needed */
-            min-width: 20px; /* Ensures roundness for single digits */
+            top: -8px; 
+            right: -10px; 
+            min-width: 20px; 
             text-align: center;
             line-height: 1.2;
             box-shadow: 0 1px 3px rgba(0,0,0,0.2);
@@ -395,7 +392,6 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
 
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Dropdown menu logic
         const dropdowns = document.querySelectorAll('.dropdown');
         dropdowns.forEach(dropdown => {
             const dropbtn = dropdown.querySelector('.dropbtn');
@@ -429,17 +425,16 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
             }
         });
 
-        // Cart functionality
         const addToCartForm = document.getElementById('addToCartForm');
         const cartItemCountSpan = document.getElementById('cartItemCount');
 
         if (addToCartForm) {
             addToCartForm.addEventListener('submit', async function(event) {
-                event.preventDefault(); // Prevent default form submission
+                event.preventDefault(); 
 
                 const submitButton = this.querySelector('.btn-add-to-cart');
                 if (submitButton && submitButton.disabled) {
-                    return; // Do nothing if button is disabled (out of stock)
+                    return; 
                 }
 
                 const productId = this.querySelector('input[name="product_id"]').value;
@@ -456,10 +451,9 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
                     });
                     const data = await response.json();
 
-                    alert(data.message); // Show the message from the server
+                    alert(data.message); 
 
                     if (data.success) {
-                        // Update cart count if the item was added successfully
                         cartItemCountSpan.textContent = data.total_cart_items;
                     }
                 } catch (error) {

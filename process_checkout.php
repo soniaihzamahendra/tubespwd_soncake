@@ -1,7 +1,7 @@
 <?php
 session_start();
 require_once 'config/database.php';
-// require_once 'includes/cart_functions.php'; // Mungkin tidak diperlukan langsung di sini karena kita akan query langsung
+
 
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -24,7 +24,6 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 
-// --- Perubahan Penting: Mengambil item keranjang dari DATABASE, bukan sesi ---
 $cart_items = [];
 try {
     $stmt_cart = $pdo->prepare("
@@ -41,13 +40,12 @@ try {
     $stmt_cart->execute([$user_id]);
     $db_cart_items = $stmt_cart->fetchAll(PDO::FETCH_ASSOC);
 
-    // Reformat array untuk kemudahan akses (product_id sebagai key)
     foreach ($db_cart_items as $item) {
         $cart_items[$item['product_id']] = [
             'name' => $item['name'],
             'price' => $item['price'],
             'quantity' => $item['quantity'],
-            'stock' => $item['stock'] // Penting untuk validasi stok
+            'stock' => $item['stock'] 
         ];
     }
 
@@ -59,31 +57,27 @@ try {
     exit();
 }
 
-// Cek apakah keranjang kosong SETELAH mencoba memuat dari database
 if (empty($cart_items)) {
     $_SESSION['message'] = "Keranjang Anda kosong. Tidak dapat memproses pesanan.";
     $_SESSION['message_type'] = "warning";
-    header("Location: katalog.php"); // Redirect ke katalog jika keranjang kosong
+    header("Location: katalog.php"); 
     exit();
 }
-// --- Akhir Perubahan Penting ---
+
 
 
 $total_amount = 0;
 
-// Mengambil data dari POST
-$nama_lengkap = trim($_POST['address_line1'] ?? ''); // Menggunakan address_line1 sebagai nama lengkap jika form tidak memiliki field nama_lengkap terpisah
-$email = ''; // Email tidak di-submit dari form checkout yang diberikan, perlu ditambahkan jika ada
+$nama_lengkap = trim($_POST['address_line1'] ?? ''); 
+$email = '';
 $telepon = trim($_POST['phone_number'] ?? '');
 $alamat_pengiriman = trim($_POST['address_line1'] . ', ' . $_POST['city'] . ', ' . $_POST['postal_code'] ?? '');
 $catatan_pesanan = trim($_POST['notes'] ?? '');
 $payment_method = trim($_POST['payment_method'] ?? '');
 
-// Ambil email user dari sesi atau database jika tidak di-submit di form
 if (isset($_SESSION['email'])) {
     $email = $_SESSION['email'];
 } else {
-    // Fallback: ambil email dari database jika tidak ada di sesi
     try {
         $stmt_user_email = $pdo->prepare("SELECT email FROM users WHERE id = ?");
         $stmt_user_email->execute([$user_id]);
@@ -98,15 +92,14 @@ if (isset($_SESSION['email'])) {
 
 
 $errors = [];
-// Validasi input
 if (empty($nama_lengkap)) { $errors[] = "Nama lengkap (dari alamat) wajib diisi."; }
 if (empty($email)) { $errors[] = "Email wajib diisi."; }
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) { $errors[] = "Format email tidak valid."; }
 if (empty($telepon)) { $errors[] = "Nomor telepon wajib diisi."; }
 if (!preg_match('/^[0-9\-\(\)\s]+$/', $telepon)) { $errors[] = "Nomor telepon hanya boleh berisi angka atau format telepon umum."; } // Perluas regex untuk format telepon
-if (empty($alamat_pengiriman)) { $errors[] = "Alamat pengiriman lengkap wajib diisi."; } // Sudah digabung di atas
+if (empty($alamat_pengiriman)) { $errors[] = "Alamat pengiriman lengkap wajib diisi."; } 
 if (empty($payment_method)) { $errors[] = "Metode pembayaran wajib dipilih."; }
-// Validasi metode pembayaran yang diizinkan (Bank Transfer dan COD)
+
 if (!in_array($payment_method, ['Bank Transfer', 'COD'])) {
     $errors[] = "Metode pembayaran tidak valid.";
 }
@@ -126,7 +119,7 @@ try {
         $product_name_in_cart = htmlspecialchars($item['name'] ?? 'Produk Tak Dikenal');
         $quantity_in_cart = isset($item['quantity']) && is_numeric($item['quantity']) ? (int)$item['quantity'] : 0;
         $price_in_cart = isset($item['price']) && is_numeric($item['price']) ? (float)$item['price'] : 0;
-        $stock_available = isset($item['stock']) && is_numeric($item['stock']) ? (int)$item['stock'] : 0; // Menggunakan stock dari item yang sudah diambil
+        $stock_available = isset($item['stock']) && is_numeric($item['stock']) ? (int)$item['stock'] : 0;  
 
         if ($quantity_in_cart <= 0) {
             $pdo->rollBack();
@@ -136,7 +129,6 @@ try {
             exit();
         }
 
-        // Cek stok langsung dari data yang sudah diambil dari DB (sudah ada lock FOR UPDATE jika diperlukan)
         if ($stock_available < $quantity_in_cart) {
             $pdo->rollBack();
             $_SESSION['message'] = "Maaf, stok untuk '" . $product_name_in_cart . "' hanya tersedia " . $stock_available . " unit. Harap sesuaikan kuantitas di keranjang Anda.";
@@ -163,10 +155,10 @@ try {
         $user_id,
         $total_amount,
         $order_status,
-        $nama_lengkap, // Menggunakan nama_lengkap dari form
+        $nama_lengkap, 
         $email,
         $telepon,
-        $alamat_pengiriman, // Sudah digabung di atas
+        $alamat_pengiriman, 
         $catatan_pesanan,
         $payment_method
     ]);
@@ -190,10 +182,9 @@ try {
         $stmt_stock_update->execute([$quantity_to_deduct, $product_id]);
     }
 
-    // --- Perubahan Penting: Menghapus item keranjang dari DATABASE ---
     $stmt_clear_cart = $pdo->prepare("DELETE FROM carts WHERE user_id = ?");
     $stmt_clear_cart->execute([$user_id]);
-    // --- Akhir Perubahan Penting ---
+
 
     $pdo->commit();
 

@@ -149,7 +149,6 @@ try {
             border: 1px solid #f5c6cb;
         }
 
-        /* Responsive table */
         @media (max-width: 992px) {
             .product-table {
                 display: block;

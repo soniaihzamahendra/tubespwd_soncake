@@ -10,8 +10,6 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['ro
     $isLoggedIn = true;
 }
 
-// Function to calculate total cart items (either from DB or session)
-// This function needs to be available on pages that display the cart count
 function calculateTotalCartItems($pdo, $isLoggedIn, $userId) {
     $total_items = 0;
     if ($isLoggedIn) {
@@ -100,7 +98,6 @@ try {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="public/css/user.css">
     <style>
-        /* Your existing CSS for catalog. You can merge this with user.css if preferred */
         .catalog-container {
             display: flex;
             gap: 30px;
@@ -190,22 +187,21 @@ try {
             background-color: var(--hover-pink);
         }
 
-        /* Cart count styling */
         .cart-link-wrapper {
             position: relative;
             display: inline-block;
         }
 
         .cart-count {
-            background-color: var(--primary-pink); /* Or any color you prefer */
+            background-color: var(--primary-pink); 
             color: white;
             border-radius: 50%;
             padding: 2px 7px;
             font-size: 0.75em;
             position: absolute;
-            top: -8px; /* Adjust as needed */
-            right: -10px; /* Adjust as needed */
-            min-width: 20px; /* Ensures roundness for single digits */
+            top: -8px; 
+            right: -10px; 
+            min-width: 20px; 
             text-align: center;
             line-height: 1.2;
             box-shadow: 0 1px 3px rgba(0,0,0,0.2);
@@ -400,10 +396,6 @@ try {
             }
         });
 
-        // --- Perubahan utama di sini ---
-        // Menghapus event listener yang mencegah akses keranjang bagi yang belum login.
-        // Sekarang tautan 'keranjang.php' akan langsung mengarah ke halaman tersebut.
-        // Pastikan keranjang_awal.php sudah siap menangani keranjang tamu.
     });
     </script>
 </body>

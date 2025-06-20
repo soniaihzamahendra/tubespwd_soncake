@@ -1,15 +1,13 @@
 <?php
 session_start();
-require_once 'config/database.php'; // Ensure this path is correct
+require_once 'config/database.php';
 
-// Initialize cart_items and total_price
 $cart_items = [];
 $total_price = 0;
 $is_logged_in = isset($_SESSION['user_id']) && $_SESSION['role'] === 'user';
-$cartItemCount = 0; // Initialize cart item count for the bubble
+$cartItemCount = 0; 
 
 if ($is_logged_in) {
-    // User is logged in, fetch cart from database
     $userId = $_SESSION['user_id'];
     try {
         $stmt = $pdo->prepare("SELECT c.product_id, c.quantity, p.name, p.price, p.stock, p.image_url
@@ -28,7 +26,7 @@ if ($is_logged_in) {
                 'stock' => (int)$item['stock']
             ];
             $total_price += (float)$item['price'] * (int)$item['quantity'];
-            $cartItemCount += (int)$item['quantity']; // Sum quantities for logged-in users
+            $cartItemCount += (int)$item['quantity']; 
         }
     } catch (PDOException $e) {
         error_log("Database error in keranjang.php (logged in cart fetch): " . $e->getMessage());
@@ -36,9 +34,8 @@ if ($is_logged_in) {
         $_SESSION['message_type'] = 'error';
     }
 } else {
-    // User is NOT logged in, fetch cart from session (guest_cart)
     if (!isset($_SESSION['guest_cart']) || !is_array($_SESSION['guest_cart'])) {
-        $_SESSION['guest_cart'] = []; // Ensure it's initialized as an array
+        $_SESSION['guest_cart'] = []; 
     }
     
     $temp_guest_cart = [];
@@ -70,7 +67,7 @@ if ($is_logged_in) {
                     'stock' => $available_stock
                 ];
                 $total_price += (float)$productDb['price'] * $current_quantity;
-                $cartItemCount += $current_quantity; // Sum quantities for guest users
+                $cartItemCount += $current_quantity; 
             } else {
                 $_SESSION['message'] = 'Beberapa produk di keranjang Anda tidak lagi tersedia dan telah dihapus.';
                 $_SESSION['message_type'] = 'warning';
@@ -106,7 +103,6 @@ if ($is_logged_in) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="public/css/user.css">
     <style>
-        /* Your existing CSS styles */
         .cart-container {
             background-color: var(--cream-white);
             border-radius: 15px;
@@ -312,25 +308,24 @@ if ($is_logged_in) {
             }
         }
 
-        /* --- Modal Styles --- */
         .modal {
-            display: none; /* Hidden by default */
-            position: fixed; /* Stay in place */
-            z-index: 1000; /* Sit on top */
+            display: none; 
+            position: fixed; 
+            z-index: 1000; 
             left: 0;
             top: 0;
-            width: 100%; /* Full width */
-            height: 100%; /* Full height */
-            overflow: auto; /* Enable scroll if needed */
-            background-color: rgba(0,0,0,0.6); /* Black w/ opacity */
-            justify-content: center; /* Center horizontally */
-            align-items: center; /* Center vertically */
-            padding: 20px; /* Add some padding for smaller screens */
+            width: 100%; 
+            height: 100%; 
+            overflow: auto; 
+            background-color: rgba(0,0,0,0.6); 
+            justify-content: center; 
+            align-items: center; 
+            padding: 20px; 
         }
 
         .modal-content {
             background-color: #fefefe;
-            margin: auto; /* Centered automatically by flexbox + margin auto */
+            margin: auto; 
             padding: 30px;
             border-radius: 10px;
             box-shadow: 0 4px 8px rgba(0,0,0,0.2);
@@ -366,8 +361,8 @@ if ($is_logged_in) {
             cursor: pointer;
             font-weight: 600;
             transition: background-color 0.3s ease, color 0.3s ease;
-            text-decoration: none; /* For the link buttons */
-            display: inline-block; /* For the link buttons */
+            text-decoration: none; 
+            display: inline-block; 
         }
 
         .modal-buttons .btn-login {
@@ -376,7 +371,7 @@ if ($is_logged_in) {
         }
 
         .modal-buttons .btn-login:hover {
-            background-color: #e06d6d; /* Darker pink */
+            background-color: #e06d6d; 
         }
 
         .modal-buttons .btn-close {
@@ -388,7 +383,6 @@ if ($is_logged_in) {
             background-color: #ccc;
         }
 
-        /* Animation for modal */
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-20px); }
             to { opacity: 1; transform: translateY(0); }
@@ -398,35 +392,32 @@ if ($is_logged_in) {
             to { opacity: 0; transform: translateY(-20px); }
         }
 
-        /* Use this class to trigger fade out before display: none */
         .modal.fade-out {
             animation: fadeOut 0.3s ease-out forwards;
         }
 
-        /* Styles for the cart bubble */
         .cart-icon-wrapper {
             position: relative;
-            display: inline-block; /* Ensures the wrapper only takes necessary space */
+            display: inline-block; 
         }
 
         .cart-bubble {
             position: absolute;
-            top: -8px; /* Adjust as needed */
-            right: -8px; /* Adjust as needed */
-            background-color: var(--primary-pink); /* Use your theme's primary color */
+            top: -8px; 
+            right: -8px; 
+            background-color: var(--primary-pink); 
             color: white;
             border-radius: 50%;
             padding: 2px 6px;
             font-size: 0.75em;
             font-weight: bold;
-            min-width: 20px; /* Ensures a minimum size even for single digits */
+            min-width: 20px; 
             text-align: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-            line-height: 1; /* Aligns text vertically */
-            display: <?php echo ($cartItemCount > 0) ? 'block' : 'none'; ?>; /* Show only if count > 0 */
+            line-height: 1; 
+            display: <?php echo ($cartItemCount > 0) ? 'block' : 'none'; ?>; 
         }
 
-        /* Mobile cart count */
         .mobile-cart-count {
             display: <?php echo ($cartItemCount > 0) ? 'inline-block' : 'none'; ?>;
             background-color: var(--primary-pink);
@@ -596,7 +587,7 @@ if ($is_logged_in) {
             const checkoutBtn = document.getElementById('checkout-btn');
             const loginModal = document.getElementById('loginModal');
             const closeModalBtn = document.getElementById('closeModalBtn');
-            const isLoggedIn = <?php echo json_encode($is_logged_in); ?>; // Pass PHP variable to JS
+            const isLoggedIn = <?php echo json_encode($is_logged_in); ?>; 
             const cartItemCountBubble = document.getElementById('cart-item-count');
 
             function formatRupiah(amount) {
@@ -609,7 +600,7 @@ if ($is_logged_in) {
             }
 
             function showMessage(message, type) {
-                ajaxMessageDisplay.textContent = ''; // Clear previous text
+                ajaxMessageDisplay.textContent = ''; 
                 if (typeof message === 'string') {
                     ajaxMessageDisplay.innerHTML = message;
                 } else {
@@ -632,7 +623,6 @@ if ($is_logged_in) {
                     bubble.style.display = count > 0 ? 'block' : 'none';
                 });
                 
-                // Also update the count in the mobile menu if exists
                 const mobileCartCount = document.querySelector('.mobile-cart-count');
                 if (mobileCartCount) {
                     mobileCartCount.textContent = count;
@@ -660,7 +650,6 @@ if ($is_logged_in) {
                     incrementBtn.disabled = newQuantity >= stock;
                 }
                 
-                // Update the bubble count
                 updateCartBubble(newCartItemCount);
             }
 
@@ -678,7 +667,6 @@ if ($is_logged_in) {
                     }
                 }
                 
-                // Update the bubble count
                 updateCartBubble(newCartItemCount);
             }
 
@@ -730,7 +718,6 @@ if ($is_logged_in) {
                 }
             }
 
-            // --- Event Listeners for Cart Actions ---
             document.addEventListener('click', function(e) {
                 if (e.target.classList.contains('remove-item-btn') || e.target.closest('.remove-item-btn')) {
                     const btn = e.target.closest('.remove-item-btn');
@@ -787,17 +774,14 @@ if ($is_logged_in) {
                 }
             });
 
-            // --- Modal Logic ---
             checkoutBtn.addEventListener('click', function(e) {
                 if (!isLoggedIn) {
-                    e.preventDefault(); // Prevent default link behavior
-                    loginModal.style.display = 'flex'; // Show the modal
+                    e.preventDefault(); 
+                    loginModal.style.display = 'flex'; 
                 }
-                // If isLoggedIn is true, the default link behavior (redirect to checkout.php) will proceed
             });
 
             closeModalBtn.addEventListener('click', function() {
-                // Add fade-out animation before hiding
                 loginModal.classList.add('fade-out');
                 loginModal.addEventListener('animationend', function handler() {
                     loginModal.style.display = 'none';
@@ -806,7 +790,6 @@ if ($is_logged_in) {
                 });
             });
 
-            // Close modal if clicking outside the modal content
             window.addEventListener('click', function(e) {
                 if (e.target == loginModal) {
                     loginModal.classList.add('fade-out');

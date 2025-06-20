@@ -4,13 +4,12 @@ require_once 'config/database.php';
 
 $username = '';
 $isLoggedIn = false;
-$cartItemCount = 0; // Initialize cart item count
+$cartItemCount = 0; 
 
 if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['role'] === 'user') {
     $username = htmlspecialchars($_SESSION['username']);
     $isLoggedIn = true;
 
-    // For logged-in users, get cart count from database
     try {
         $userId = $_SESSION['user_id'];
         $stmt = $pdo->prepare("SELECT SUM(quantity) AS total_items FROM carts WHERE user_id = ?");
@@ -19,11 +18,10 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['ro
         $cartItemCount = (int)($result['total_items'] ?? 0);
     } catch (PDOException $e) {
         error_log("Error fetching cart count for logged-in user: " . $e->getMessage());
-        $cartItemCount = 0; // Default to 0 on error
+        $cartItemCount = 0; 
     }
 
 } else {
-    // For guest users, get cart count from session (guest_cart)
     if (isset($_SESSION['guest_cart']) && is_array($_SESSION['guest_cart'])) {
         foreach ($_SESSION['guest_cart'] as $item) {
             $cartItemCount += (int)($item['quantity'] ?? 0);
@@ -72,21 +70,20 @@ $testimonials = [
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
 
-        /* Add this for the cart count bubble */
         .cart-link {
             position: relative;
             display: inline-block;
         }
         .cart-count {
-            background-color: var(--primary-pink); /* Or any color you prefer */
+            background-color: var(--primary-pink); 
             color: white;
             border-radius: 50%;
             padding: 2px 7px;
             font-size: 0.75em;
             position: absolute;
-            top: -8px; /* Adjust as needed */
-            right: -10px; /* Adjust as needed */
-            min-width: 20px; /* Ensures roundness for single digits */
+            top: -8px; 
+            right: -10px; 
+            min-width: 20px; 
             text-align: center;
             line-height: 1.2;
             box-shadow: 0 1px 3px rgba(0,0,0,0.2);
@@ -239,7 +236,6 @@ $testimonials = [
 
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Dropdown menu logic (existing)
         const dropdowns = document.querySelectorAll('.dropdown');
         dropdowns.forEach(dropdown => {
             const dropbtn = dropdown.querySelector('.dropbtn');
@@ -274,7 +270,6 @@ $testimonials = [
             }
         });
 
-        // Add to Cart and Update Cart Count Logic
         const addToCartButtons = document.querySelectorAll('.add-to-cart-btn');
         const cartItemCountSpan = document.getElementById('cart-item-count');
 
@@ -292,8 +287,7 @@ $testimonials = [
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        alert(data.message); // Menampilkan pesan dari backend
-                        // Update cart count in the header
+                        alert(data.message); 
                         if (cartItemCountSpan && data.total_cart_items !== undefined) {
                             cartItemCountSpan.textContent = data.total_cart_items;
                         }

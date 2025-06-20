@@ -1,20 +1,19 @@
 <?php
 session_start();
 require_once 'config/database.php';
-require_once 'includes/cart_functions.php'; // Pastikan ini di-include
+require_once 'includes/cart_functions.php'; 
 
 $username = '';
 $isLoggedIn = false;
-$cart_items = []; // Inisialisasi array keranjang untuk checkout
+$cart_items = []; 
 $total_price = 0;
-$userId = null; // Inisialisasi userId
+$userId = null; 
 
 if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['role'] === 'user') {
     $username = htmlspecialchars($_SESSION['username']);
     $isLoggedIn = true;
     $userId = $_SESSION['user_id'];
 
-    // Untuk pengguna yang sudah login, ambil item keranjang dari database
     try {
         $stmt = $pdo->prepare("
             SELECT
@@ -29,7 +28,6 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['ro
             WHERE c.user_id = ?
         ");
         $stmt->execute([$userId]);
-        // Ambil hasil dan format ke bentuk array asosiatif dengan product_id sebagai key
         $db_cart_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($db_cart_items as $item) {
             $cart_items[$item['id']] = $item;
@@ -39,13 +37,11 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['ro
         error_log("Error fetching cart items for logged-in user in checkout.php: " . $e->getMessage());
         $_SESSION['message'] = 'Terjadi kesalahan saat memuat keranjang Anda. Silakan coba lagi.';
         $_SESSION['message_type'] = 'error';
-        // Redirect kembali ke keranjang jika gagal memuat
         header("Location: keranjang.php");
         exit();
     }
 
 } else {
-    // Jika pengguna TIDAK login, arahkan ke halaman login
     $_SESSION['intended_url'] = $_SERVER['REQUEST_URI'];
     $_SESSION['message'] = 'Anda harus login terlebih dahulu untuk melanjutkan checkout.';
     $_SESSION['message_type'] = 'error';
@@ -53,11 +49,10 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['ro
     exit();
 }
 
-// Hitung total harga dari item yang sudah dimuat dari database
 if (empty($cart_items)) {
     $_SESSION['message'] = 'Keranjang Anda kosong. Silakan tambahkan produk terlebih dahulu.';
     $_SESSION['message_type'] = 'warning';
-    header("Location: katalog.php"); // Redirect ke katalog jika keranjang kosong
+    header("Location: katalog.php"); 
     exit();
 }
 
@@ -67,10 +62,8 @@ foreach ($cart_items as $item) {
     $total_price += $price * $quantity;
 }
 
-// Dapatkan jumlah total item di keranjang untuk bubble navigasi (sama seperti di keranjang.php)
 $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
 
-// Logika untuk menampilkan pesan dari sesi (misalnya dari redirect)
 $message = '';
 $message_type = '';
 if (isset($_SESSION['message'])) {
@@ -240,7 +233,6 @@ if (isset($_SESSION['message'])) {
             border: 1px solid #ffeaa7;
         }
 
-        /* Cart badge for header */
         .cart-badge {
             background-color: #ff0000;
             color: white;
@@ -401,7 +393,6 @@ if (isset($_SESSION['message'])) {
                                 <input type="radio" id="cod" name="payment_method" value="COD">
                                 <label for="cod">Cash On Delivery (COD)</label>
                             </div>
-                            <!-- Opsi pembayaran lainnya dihapus sesuai permintaan -->
                         </div>
 
                         <div class="place-order-btn-container">
@@ -448,7 +439,6 @@ if (isset($_SESSION['message'])) {
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Function to update cart count display
             const cartCountSpan = document.getElementById('cart-count');
             function updateCartCountDisplay(count) {
                 if (cartCountSpan) {
@@ -461,11 +451,9 @@ if (isset($_SESSION['message'])) {
                 }
             }
 
-            // Initial cart count display from PHP
             const initialCartCount = <?php echo $cart_count; ?>;
             updateCartCountDisplay(initialCartCount);
 
-            // Handle dropdowns (if present in this page, copy from user_dashboard.php or katalog.php)
             const dropdowns = document.querySelectorAll('.dropdown');
             dropdowns.forEach(dropdown => {
                 const dropbtn = dropdown.querySelector('.dropbtn');
@@ -499,19 +487,17 @@ if (isset($_SESSION['message'])) {
                 }
             });
 
-            // Prevent checkout if cart is empty on client side (redundant if PHP handles it, but good fallback)
             const checkoutForm = document.querySelector('.checkout-form');
             if (checkoutForm) {
                 checkoutForm.addEventListener('submit', function(event) {
                     const totalAmountElement = document.getElementById('checkout-total-amount');
                     const totalText = totalAmountElement.textContent;
-                    // Remove "Rp" and format to a number for comparison
                     const totalValue = parseFloat(totalText.replace('Rp', '').replace(/\./g, '').replace(',', '.'));
 
                     if (isNaN(totalValue) || totalValue <= 0) {
                         event.preventDefault();
                         alert('Keranjang Anda kosong. Silakan tambahkan produk terlebih dahulu sebelum checkout.');
-                        window.location.href = 'katalog.php'; // Redirect to catalog
+                        window.location.href = 'katalog.php';
                     }
                 });
             }

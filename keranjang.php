@@ -1,20 +1,19 @@
 <?php
 session_start();
 require_once 'config/database.php';
-require_once 'includes/cart_functions.php'; // Pastikan ini di-include
+require_once 'includes/cart_functions.php'; 
 
 $username = '';
 $isLoggedIn = false;
-$cart_items = []; // Inisialisasi array keranjang
+$cart_items = []; 
 $total_price = 0;
-$userId = null; // Inisialisasi userId
+$userId = null; 
 
 if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['role'] === 'user') {
     $username = htmlspecialchars($_SESSION['username']);
     $isLoggedIn = true;
     $userId = $_SESSION['user_id'];
 
-    // Untuk pengguna yang sudah login, ambil item keranjang dari database
     try {
         $stmt = $pdo->prepare("
             SELECT 
@@ -29,7 +28,6 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['ro
             WHERE c.user_id = ?
         ");
         $stmt->execute([$userId]);
-        // Ambil hasil dan format ke bentuk array asosiatif dengan product_id sebagai key
         $db_cart_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($db_cart_items as $item) {
             $cart_items[$item['id']] = $item;
@@ -37,31 +35,24 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['ro
 
     } catch (PDOException $e) {
         error_log("Error fetching cart items for logged-in user: " . $e->getMessage());
-        // Jika ada error database, biarkan $cart_items kosong dan mungkin tampilkan pesan error
         $_SESSION['message'] = 'Terjadi kesalahan saat memuat keranjang Anda. Silakan coba lagi.';
         $_SESSION['message_type'] = 'error';
     }
 
 } else {
-    // Jika pengguna TIDAK login (guest), arahkan ke keranjang tamu
-    // Atau, jika Anda ingin memaksa login, Anda bisa menggunakan redirect ini:
     $_SESSION['intended_url'] = $_SERVER['REQUEST_URI'];
     $_SESSION['message'] = 'Anda harus login terlebih dahulu untuk mengakses keranjang belanja.';
     $_SESSION['message_type'] = 'error';
     header("Location: login.php");
     exit();
-    // Alternatifnya, jika ingin menampilkan keranjang tamu di sini juga:
-    // $cart_items = $_SESSION['guest_cart'] ?? [];
 }
 
-// Hitung total harga dari item yang sudah dimuat (baik dari DB atau sesi)
 foreach ($cart_items as $item) {
     $price = isset($item['price']) && is_numeric($item['price']) ? (float)$item['price'] : 0;
     $quantity = isset($item['quantity']) && is_numeric($item['quantity']) ? (int)$item['quantity'] : 0;
     $total_price += $price * $quantity;
 }
 
-// Dapatkan jumlah total item di keranjang untuk bubble navigasi
 $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
 
 ?>
@@ -76,7 +67,6 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="public/css/user.css">
     <style>
-        /* CSS yang sudah ada */
         .cart-container {
             background-color: var(--cream-white);
             border-radius: 15px;
@@ -281,7 +271,6 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                 text-align: center;
             }
         }
-        /* CSS for cart count bubble in header */
         .cart-badge {
             background-color: #ff0000;
             color: white;
@@ -307,7 +296,6 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
     <header class="main-header">
         <div class="container header-content">
             <div class="logo">
-                <!-- Ubah link ke halaman yang sesuai setelah login -->
                 <a href="user_dashboard.php">Soncake</a>
             </div>
             <nav class="main-nav">
@@ -330,7 +318,6 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                             </div>
                         </li>
                     <?php else: ?>
-                        <!-- Asumsi keranjang.php hanya untuk user login, jika guest mencoba akses, akan diredirect -->
                         <li><a href="login.php">Login</a></li>
                         <li><a href="register.php">Register</a></li>
                     <?php endif; ?>
@@ -345,7 +332,6 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                 <h2 class="cart-header">Keranjang Belanja Anda</h2>
 
                 <?php
-                // Tampilkan pesan dari sesi (misalnya dari redirect login)
                 if (isset($_SESSION['message'])) {
                     $message_type = $_SESSION['message_type'] ?? 'info';
                     echo '<div id="server-message" class="message-box ' . htmlspecialchars($message_type) . '">' . htmlspecialchars($_SESSION['message']) . '</div>';
@@ -448,7 +434,7 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const ajaxMessageDisplay = document.getElementById('ajax-message-display');
-            const cartCountSpan = document.getElementById('cart-count'); // Ambil elemen bubble keranjang
+            const cartCountSpan = document.getElementById('cart-count');
 
             function formatRupiah(amount) {
                 return new Intl.NumberFormat('id-ID', {
@@ -490,10 +476,9 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                     decrementBtn.disabled = newQuantity <= 1;
                     incrementBtn.disabled = newQuantity >= stock;
                 }
-                // Perbarui juga bubble keranjang di header
-                updateCartCountBubble(cartTotal); // Perhatikan: cartTotal di sini adalah total harga, bukan total item count.
-                                               // Kita perlu update cart count, bukan total harga.
-                                               // Ini akan diperbaiki di fungsi updateCartCountBubble yang baru.
+                updateCartCountBubble(cartTotal); 
+                                               
+                                               
             }
 
             function updateCartCountBubble(count) {
@@ -553,7 +538,6 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                         } else { 
                             updateCartDisplay(productId, data.new_quantity || quantity, data.subtotal, data.cart_total);
                         }
-                        // Pastikan bubble keranjang diupdate dengan total item count, bukan total harga
                         updateCartCountBubble(data.cart_item_count); 
                     } else {
                         showMessage(data.message || 'Terjadi kesalahan pada server.', 'error');
@@ -576,8 +560,7 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                 if (e.target.classList.contains('remove-item-btn') || e.target.closest('.remove-item-btn')) {
                     const btn = e.target.closest('.remove-item-btn');
                     const productId = btn.dataset.id;
-                    // Mengganti confirm() dengan modal kustom jika ingin
-                    if (true) { // Untuk testing, sementara selalu true
+                    if (true) { 
                         sendUpdateCartRequest(productId, 0, 'remove');
                     }
                 }
@@ -629,8 +612,6 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                 }
             });
 
-            // Inisialisasi tampilan bubble keranjang saat halaman keranjang dimuat
-            // Ambil count dari PHP saat halaman dimuat
             const initialCartCount = <?php echo $cart_count; ?>;
             updateCartCountBubble(initialCartCount);
         });
