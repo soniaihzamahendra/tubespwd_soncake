@@ -144,7 +144,8 @@ try {
         .status-Completed { background-color: #6f42c1; } 
         .status-Cancelled { background-color: #dc3545; }
         .status-Refunded { background-color: #6c757d; } 
-
+        .status-WaitingforPayment { background-color: #ff9800; }
+        .status-Waiting_for_Payment { background-color: #ff9800; }
         .message {
             padding: 12px;
             border-radius: 8px;

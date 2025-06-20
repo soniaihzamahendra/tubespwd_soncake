@@ -1,69 +1,99 @@
 <?php
 session_start();
-require_once 'config/database.php';
-require_once 'includes/cart_functions.php'; // Pastikan ini di-include
+require_once 'config/database.php'; // Ensure this path is correct
 
-$username = '';
-$isLoggedIn = false;
-$cart_items = []; // Inisialisasi array keranjang
+// Initialize cart_items and total_price
+$cart_items = [];
 $total_price = 0;
-$userId = null; // Inisialisasi userId
+$is_logged_in = isset($_SESSION['user_id']) && $_SESSION['role'] === 'user';
+$cartItemCount = 0; // Initialize cart item count for the bubble
 
-if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['role'] === 'user') {
-    $username = htmlspecialchars($_SESSION['username']);
-    $isLoggedIn = true;
+if ($is_logged_in) {
+    // User is logged in, fetch cart from database
     $userId = $_SESSION['user_id'];
-
-    // Untuk pengguna yang sudah login, ambil item keranjang dari database
     try {
-        $stmt = $pdo->prepare("
-            SELECT 
-                c.product_id AS id, 
-                p.name, 
-                p.price, 
-                p.image_url, 
-                c.quantity, 
-                p.stock 
-            FROM carts c
-            JOIN products p ON c.product_id = p.id
-            WHERE c.user_id = ?
-        ");
+        $stmt = $pdo->prepare("SELECT c.product_id, c.quantity, p.name, p.price, p.stock, p.image_url
+                               FROM carts c JOIN products p ON c.product_id = p.id
+                               WHERE c.user_id = ?");
         $stmt->execute([$userId]);
-        // Ambil hasil dan format ke bentuk array asosiatif dengan product_id sebagai key
         $db_cart_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($db_cart_items as $item) {
-            $cart_items[$item['id']] = $item;
-        }
 
+        foreach ($db_cart_items as $item) {
+            $cart_items[$item['product_id']] = [
+                'id' => $item['product_id'],
+                'name' => $item['name'],
+                'price' => (float)$item['price'],
+                'image_url' => $item['image_url'],
+                'quantity' => (int)$item['quantity'],
+                'stock' => (int)$item['stock']
+            ];
+            $total_price += (float)$item['price'] * (int)$item['quantity'];
+            $cartItemCount += (int)$item['quantity']; // Sum quantities for logged-in users
+        }
     } catch (PDOException $e) {
-        error_log("Error fetching cart items for logged-in user: " . $e->getMessage());
-        // Jika ada error database, biarkan $cart_items kosong dan mungkin tampilkan pesan error
-        $_SESSION['message'] = 'Terjadi kesalahan saat memuat keranjang Anda. Silakan coba lagi.';
+        error_log("Database error in keranjang.php (logged in cart fetch): " . $e->getMessage());
+        $_SESSION['message'] = 'Terjadi kesalahan saat memuat keranjang Anda dari database.';
         $_SESSION['message_type'] = 'error';
     }
-
 } else {
-    // Jika pengguna TIDAK login (guest), arahkan ke keranjang tamu
-    // Atau, jika Anda ingin memaksa login, Anda bisa menggunakan redirect ini:
-    $_SESSION['intended_url'] = $_SERVER['REQUEST_URI'];
-    $_SESSION['message'] = 'Anda harus login terlebih dahulu untuk mengakses keranjang belanja.';
-    $_SESSION['message_type'] = 'error';
-    header("Location: login.php");
-    exit();
-    // Alternatifnya, jika ingin menampilkan keranjang tamu di sini juga:
-    // $cart_items = $_SESSION['guest_cart'] ?? [];
+    // User is NOT logged in, fetch cart from session (guest_cart)
+    if (!isset($_SESSION['guest_cart']) || !is_array($_SESSION['guest_cart'])) {
+        $_SESSION['guest_cart'] = []; // Ensure it's initialized as an array
+    }
+    
+    $temp_guest_cart = [];
+    foreach ($_SESSION['guest_cart'] as $productId => $item) {
+        try {
+            $stmt = $pdo->prepare("SELECT stock, price, name, image_url FROM products WHERE id = ?");
+            $stmt->execute([$productId]);
+            $productDb = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($productDb) {
+                $current_quantity = (int)($item['quantity'] ?? 0);
+                $available_stock = (int)$productDb['stock'];
+
+                if ($current_quantity > $available_stock) {
+                    $current_quantity = $available_stock;
+                    $_SESSION['message'] = 'Kuantitas untuk beberapa produk disesuaikan karena melebihi stok yang tersedia.';
+                    $_SESSION['message_type'] = 'warning';
+                }
+                if ($current_quantity <= 0) {
+                     continue;
+                }
+
+                $temp_guest_cart[$productId] = [
+                    'id' => $productId,
+                    'name' => $productDb['name'],
+                    'price' => (float)$productDb['price'],
+                    'image_url' => $productDb['image_url'],
+                    'quantity' => $current_quantity,
+                    'stock' => $available_stock
+                ];
+                $total_price += (float)$productDb['price'] * $current_quantity;
+                $cartItemCount += $current_quantity; // Sum quantities for guest users
+            } else {
+                $_SESSION['message'] = 'Beberapa produk di keranjang Anda tidak lagi tersedia dan telah dihapus.';
+                $_SESSION['message_type'] = 'warning';
+            }
+        } catch (PDOException $e) {
+            error_log("Database error in keranjang.php (guest cart product fetch): " . $e->getMessage());
+            $_SESSION['message'] = 'Terjadi kesalahan saat memuat detail produk di keranjang Anda.';
+            $_SESSION['message_type'] = 'error';
+        }
+    }
+    $_SESSION['guest_cart'] = $temp_guest_cart;
+    $cart_items = $_SESSION['guest_cart'];
+
+    if (!empty($cart_items)) {
+        $_SESSION['message'] = $_SESSION['message'] ?? 'Anda belum login. Item di keranjang ini bersifat sementara. Silakan <a href="login.php">login</a> untuk menyimpan keranjang Anda secara permanen.';
+        $_SESSION['message_type'] = $_SESSION['message_type'] ?? 'warning';
+    } else {
+        if (isset($_SESSION['message']) && strpos($_SESSION['message'], 'sementara') !== false) {
+            unset($_SESSION['message']);
+            unset($_SESSION['message_type']);
+        }
+    }
 }
-
-// Hitung total harga dari item yang sudah dimuat (baik dari DB atau sesi)
-foreach ($cart_items as $item) {
-    $price = isset($item['price']) && is_numeric($item['price']) ? (float)$item['price'] : 0;
-    $quantity = isset($item['quantity']) && is_numeric($item['quantity']) ? (int)$item['quantity'] : 0;
-    $total_price += $price * $quantity;
-}
-
-// Dapatkan jumlah total item di keranjang untuk bubble navigasi
-$cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
-
 ?>
 
 <!DOCTYPE html>
@@ -76,7 +106,7 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="public/css/user.css">
     <style>
-        /* CSS yang sudah ada */
+        /* Your existing CSS styles */
         .cart-container {
             background-color: var(--cream-white);
             border-radius: 15px;
@@ -281,25 +311,132 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                 text-align: center;
             }
         }
-        /* CSS for cart count bubble in header */
-        .cart-badge {
-            background-color: #ff0000;
+
+        /* --- Modal Styles --- */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1000; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.6); /* Black w/ opacity */
+            justify-content: center; /* Center horizontally */
+            align-items: center; /* Center vertically */
+            padding: 20px; /* Add some padding for smaller screens */
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto; /* Centered automatically by flexbox + margin auto */
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            width: 90%;
+            max-width: 450px;
+            text-align: center;
+            position: relative;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .modal-content h3 {
+            color: var(--secondary-brown);
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .modal-content p {
+            margin-bottom: 25px;
+            line-height: 1.6;
+            color: var(--dark-grey-text);
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .modal-buttons .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.3s ease, color 0.3s ease;
+            text-decoration: none; /* For the link buttons */
+            display: inline-block; /* For the link buttons */
+        }
+
+        .modal-buttons .btn-login {
+            background-color: var(--primary-pink);
+            color: white;
+        }
+
+        .modal-buttons .btn-login:hover {
+            background-color: #e06d6d; /* Darker pink */
+        }
+
+        .modal-buttons .btn-close {
+            background-color: #ddd;
+            color: var(--dark-grey-text);
+        }
+
+        .modal-buttons .btn-close:hover {
+            background-color: #ccc;
+        }
+
+        /* Animation for modal */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-20px); }
+        }
+
+        /* Use this class to trigger fade out before display: none */
+        .modal.fade-out {
+            animation: fadeOut 0.3s ease-out forwards;
+        }
+
+        /* Styles for the cart bubble */
+        .cart-icon-wrapper {
+            position: relative;
+            display: inline-block; /* Ensures the wrapper only takes necessary space */
+        }
+
+        .cart-bubble {
+            position: absolute;
+            top: -8px; /* Adjust as needed */
+            right: -8px; /* Adjust as needed */
+            background-color: var(--primary-pink); /* Use your theme's primary color */
             color: white;
             border-radius: 50%;
-            padding: 2px 7px;
-            font-size: 0.7em;
-            position: relative;
-            top: -8px;
-            left: -5px;
-            white-space: nowrap;
-            vertical-align: super;
-            min-width: 18px;
+            padding: 2px 6px;
+            font-size: 0.75em;
+            font-weight: bold;
+            min-width: 20px; /* Ensures a minimum size even for single digits */
             text-align: center;
-            display: inline-block;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            line-height: 1; /* Aligns text vertically */
+            display: <?php echo ($cartItemCount > 0) ? 'block' : 'none'; ?>; /* Show only if count > 0 */
         }
-        .cart-badge.hidden {
-            display: none;
+
+        /* Mobile cart count */
+        .mobile-cart-count {
+            display: <?php echo ($cartItemCount > 0) ? 'inline-block' : 'none'; ?>;
+            background-color: var(--primary-pink);
+            color: white;
+            border-radius: 50%;
+            padding: 2px 6px;
+            font-size: 0.75em;
+            margin-left: 5px;
         }
+
     </style>
 </head>
 <body>
@@ -307,22 +444,21 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
     <header class="main-header">
         <div class="container header-content">
             <div class="logo">
-                <!-- Ubah link ke halaman yang sesuai setelah login -->
-                <a href="user_dashboard.php">Soncake</a>
+                <a href="index.php">Soncake</a>
             </div>
             <nav class="main-nav">
                 <ul>
-                    <li><a href="user_dashboard.php">Home</a></li>
-                    <li><a href="katalog.php">Katalog</a></li>
+                    <li><a href="index.php">Home</a></li>
+                    <li><a href="katalogawal.php">Katalog</a></li>
                     <li>
-                        <a href="keranjang.php" class="active" id="cartLink">
+                        <a href="keranjang.php" class="active cart-icon-wrapper">
                             <i class="fas fa-shopping-cart"></i> Keranjang
-                            <span id="cart-count" class="cart-badge"><?php echo $cart_count; ?></span>
+                            <span class="cart-bubble" id="cart-item-count"><?php echo $cartItemCount; ?></span>
                         </a>
                     </li>
-                    <?php if ($isLoggedIn): ?>
+                    <?php if (isset($_SESSION['username'])): ?>
                         <li class="dropdown">
-                            <a href="#" class="dropbtn"><i class="fas fa-user-circle"></i> <?php echo htmlspecialchars($username); ?> <i class="fas fa-caret-down"></i></a>
+                            <a href="#" class="dropbtn"><i class="fas fa-user-circle"></i> <?php echo htmlspecialchars($_SESSION['username']); ?> <i class="fas fa-caret-down"></i></a>
                             <div class="dropdown-content">
                                 <a href="history_pesanan.php">Pesanan Saya</a>
                                 <a href="user_profile.php">Profil</a>
@@ -330,7 +466,6 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                             </div>
                         </li>
                     <?php else: ?>
-                        <!-- Asumsi keranjang.php hanya untuk user login, jika guest mencoba akses, akan diredirect -->
                         <li><a href="login.php">Login</a></li>
                         <li><a href="register.php">Register</a></li>
                     <?php endif; ?>
@@ -345,10 +480,9 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                 <h2 class="cart-header">Keranjang Belanja Anda</h2>
 
                 <?php
-                // Tampilkan pesan dari sesi (misalnya dari redirect login)
                 if (isset($_SESSION['message'])) {
                     $message_type = $_SESSION['message_type'] ?? 'info';
-                    echo '<div id="server-message" class="message-box ' . htmlspecialchars($message_type) . '">' . htmlspecialchars($_SESSION['message']) . '</div>';
+                    echo '<div id="server-message" class="message-box ' . htmlspecialchars($message_type) . '">' . $_SESSION['message'] . '</div>';
                     unset($_SESSION['message']);
                     unset($_SESSION['message_type']);
                 }
@@ -357,7 +491,7 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
 
                 <div class="cart-container">
                     <?php if (empty($cart_items)): ?>
-                        <p class="empty-cart-message">Keranjang Anda kosong. Yuk, <a href="katalog.php">belanja sekarang!</a></p>
+                        <p class="empty-cart-message">Keranjang Anda kosong. Yuk, <a href="katalogawal.php">belanja sekarang!</a></p>
                     <?php else: ?>
                         <table class="cart-items">
                             <thead>
@@ -383,9 +517,9 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                                     <td><span class="cart-item-price">Rp <?php echo number_format($item['price'], 0, ',', '.'); ?></span></td>
                                     <td>
                                         <div class="quantity-control-cart">
-                                            <button class="decrement-qty-btn" data-id="<?php echo $product_id; ?>" data-stock="<?php echo $item['stock']; ?>" <?php echo ($item['quantity'] <= 1) ? 'disabled' : ''; ?>>-</button>
+                                            <button class="decrement-qty-btn" data-id="<?php echo $product_id; ?>" data-stock="<?php echo htmlspecialchars($item['stock']); ?>" <?php echo ($item['quantity'] <= 1) ? 'disabled' : ''; ?>>-</button>
                                             <input type="number" class="item-quantity-input" value="<?php echo htmlspecialchars($item['quantity']); ?>" min="1" max="<?php echo htmlspecialchars($item['stock']); ?>" data-id="<?php echo $product_id; ?>" data-price="<?php echo $item['price']; ?>">
-                                            <button class="increment-qty-btn" data-id="<?php echo $product_id; ?>" data-stock="<?php echo $item['stock']; ?>" <?php echo ($item['quantity'] >= $item['stock']) ? 'disabled' : ''; ?>>+</button>
+                                            <button class="increment-qty-btn" data-id="<?php echo $product_id; ?>" data-stock="<?php echo htmlspecialchars($item['stock']); ?>" <?php echo ($item['quantity'] >= $item['stock']) ? 'disabled' : ''; ?>>+</button>
                                         </div>
                                     </td>
                                     <td class="subtotal-cell">Rp <?php echo number_format($item['price'] * $item['quantity'], 0, ',', '.'); ?></td>
@@ -404,7 +538,7 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                         </div>
 
                         <div class="checkout-btn-container">
-                            <a href="checkout.php" class="btn-primary">Lanjutkan ke Checkout <i class="fas fa-arrow-right"></i></a>
+                            <a href="checkout.php" class="btn-primary" id="checkout-btn">Lanjutkan ke Checkout <i class="fas fa-arrow-right"></i></a>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -421,8 +555,8 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
             <div class="footer-section links">
                 <h3>Tautan Cepat</h3>
                 <ul>
-                    <li><a href="user_dashboard.php">Home</a></li>
-                    <li><a href="katalog.php">Katalog</a></li>
+                    <li><a href="index.php">Home</a></li>
+                    <li><a href="katalogawal.php">Katalog</a></li>
                     <li><a href="#">Kontak Kami</a></li>
                     <li><a href="#">Kebijakan Privasi</a></li>
                 </ul>
@@ -445,10 +579,25 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
         </div>
     </footer>
 
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <h3>Login Diperlukan</h3>
+            <p>Untuk melanjutkan ke proses checkout, Anda harus login terlebih dahulu.</p>
+            <div class="modal-buttons">
+                <a href="login.php" class="btn btn-login">Login Sekarang</a>
+                <button type="button" class="btn btn-close" id="closeModalBtn">Nanti Saja</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const ajaxMessageDisplay = document.getElementById('ajax-message-display');
-            const cartCountSpan = document.getElementById('cart-count'); // Ambil elemen bubble keranjang
+            const checkoutBtn = document.getElementById('checkout-btn');
+            const loginModal = document.getElementById('loginModal');
+            const closeModalBtn = document.getElementById('closeModalBtn');
+            const isLoggedIn = <?php echo json_encode($is_logged_in); ?>; // Pass PHP variable to JS
+            const cartItemCountBubble = document.getElementById('cart-item-count');
 
             function formatRupiah(amount) {
                 return new Intl.NumberFormat('id-ID', {
@@ -460,7 +609,12 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
             }
 
             function showMessage(message, type) {
-                ajaxMessageDisplay.textContent = message;
+                ajaxMessageDisplay.textContent = ''; // Clear previous text
+                if (typeof message === 'string') {
+                    ajaxMessageDisplay.innerHTML = message;
+                } else {
+                    ajaxMessageDisplay.textContent = 'Error: Message is not a string.';
+                }
                 ajaxMessageDisplay.className = `message-box ${type}`;
                 ajaxMessageDisplay.style.display = 'block';
 
@@ -471,7 +625,22 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                 }, 5000);
             }
 
-            function updateCartDisplay(productId, newQuantity, subtotal, cartTotal) {
+            function updateCartBubble(count) {
+                const cartBubbles = document.querySelectorAll('.cart-bubble');
+                cartBubbles.forEach(bubble => {
+                    bubble.textContent = count;
+                    bubble.style.display = count > 0 ? 'block' : 'none';
+                });
+                
+                // Also update the count in the mobile menu if exists
+                const mobileCartCount = document.querySelector('.mobile-cart-count');
+                if (mobileCartCount) {
+                    mobileCartCount.textContent = count;
+                    mobileCartCount.style.display = count > 0 ? 'inline-block' : 'none';
+                }
+            }
+
+            function updateCartDisplay(productId, newQuantity, subtotal, cartTotal, newCartItemCount) {
                 const row = document.querySelector(`tr[data-product-id="${productId}"]`);
                 if (row) {
                     const quantityInput = row.querySelector('.item-quantity-input');
@@ -490,25 +659,12 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                     decrementBtn.disabled = newQuantity <= 1;
                     incrementBtn.disabled = newQuantity >= stock;
                 }
-                // Perbarui juga bubble keranjang di header
-                updateCartCountBubble(cartTotal); // Perhatikan: cartTotal di sini adalah total harga, bukan total item count.
-                                               // Kita perlu update cart count, bukan total harga.
-                                               // Ini akan diperbaiki di fungsi updateCartCountBubble yang baru.
+                
+                // Update the bubble count
+                updateCartBubble(newCartItemCount);
             }
 
-            function updateCartCountBubble(count) {
-                if (cartCountSpan) {
-                    cartCountSpan.textContent = count;
-                    if (count > 0) {
-                        cartCountSpan.classList.remove('hidden');
-                    } else {
-                        cartCountSpan.classList.add('hidden');
-                    }
-                }
-            }
-
-
-            function removeItemFromDisplay(productId, cartTotal) {
+            function removeItemFromDisplay(productId, cartTotal, newCartItemCount) {
                 const row = document.querySelector(`tr[data-product-id="${productId}"]`);
                 if (row) {
                     row.remove();
@@ -518,9 +674,12 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                     const cartTableBody = document.querySelector('.cart-items tbody');
                     if (cartTableBody && cartTableBody.children.length === 0) {
                         const cartContainer = document.querySelector('.cart-container');
-                        cartContainer.innerHTML = '<p class="empty-cart-message">Keranjang Anda kosong. Yuk, <a href="katalog.php">belanja sekarang!</a></p>';
+                        cartContainer.innerHTML = '<p class="empty-cart-message">Keranjang Anda kosong. Yuk, <a href="katalogawal.php">belanja sekarang!</a></p>';
                     }
                 }
+                
+                // Update the bubble count
+                updateCartBubble(newCartItemCount);
             }
 
             async function sendUpdateCartRequest(productId, quantity, action) {
@@ -547,21 +706,21 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                     const data = await response.json();
 
                     if (data.success) {
-                        showMessage(data.message, 'success');
-                        if (action === 'remove') {
-                            removeItemFromDisplay(productId, data.cart_total);
+                        showMessage(data.message, data.message_type || 'success');
+                        if (action === 'remove' || data.action_performed === 'remove') {
+                            removeItemFromDisplay(productId, data.cart_total, data.cart_item_count);
                         } else { 
-                            updateCartDisplay(productId, data.new_quantity || quantity, data.subtotal, data.cart_total);
+                            updateCartDisplay(productId, data.new_quantity || quantity, data.subtotal, data.cart_total, data.cart_item_count);
                         }
-                        // Pastikan bubble keranjang diupdate dengan total item count, bukan total harga
-                        updateCartCountBubble(data.cart_item_count); 
                     } else {
-                        showMessage(data.message || 'Terjadi kesalahan pada server.', 'error');
-                        if (action === 'update' && data.current_quantity) {
+                        showMessage(data.message || 'Terjadi kesalahan pada server.', data.message_type || 'error');
+                        if (action === 'update' && data.current_quantity !== undefined) {
                             const quantityInput = document.querySelector(`tr[data-product-id="${productId}"] .item-quantity-input`);
                             if (quantityInput) {
                                 quantityInput.value = data.current_quantity;
-                                updateCartDisplay(productId, data.current_quantity, data.subtotal, data.cart_total);
+                                const itemPrice = parseFloat(quantityInput.dataset.price);
+                                const currentSubtotal = itemPrice * data.current_quantity;
+                                updateCartDisplay(productId, data.current_quantity, currentSubtotal, data.cart_total, data.cart_item_count);
                             }
                         }
                     }
@@ -571,13 +730,12 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                 }
             }
 
-
+            // --- Event Listeners for Cart Actions ---
             document.addEventListener('click', function(e) {
                 if (e.target.classList.contains('remove-item-btn') || e.target.closest('.remove-item-btn')) {
                     const btn = e.target.closest('.remove-item-btn');
                     const productId = btn.dataset.id;
-                    // Mengganti confirm() dengan modal kustom jika ingin
-                    if (true) { // Untuk testing, sementara selalu true
+                    if (confirm('Yakin ingin menghapus produk ini dari keranjang?')) {
                         sendUpdateCartRequest(productId, 0, 'remove');
                     }
                 }
@@ -629,10 +787,36 @@ $cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
                 }
             });
 
-            // Inisialisasi tampilan bubble keranjang saat halaman keranjang dimuat
-            // Ambil count dari PHP saat halaman dimuat
-            const initialCartCount = <?php echo $cart_count; ?>;
-            updateCartCountBubble(initialCartCount);
+            // --- Modal Logic ---
+            checkoutBtn.addEventListener('click', function(e) {
+                if (!isLoggedIn) {
+                    e.preventDefault(); // Prevent default link behavior
+                    loginModal.style.display = 'flex'; // Show the modal
+                }
+                // If isLoggedIn is true, the default link behavior (redirect to checkout.php) will proceed
+            });
+
+            closeModalBtn.addEventListener('click', function() {
+                // Add fade-out animation before hiding
+                loginModal.classList.add('fade-out');
+                loginModal.addEventListener('animationend', function handler() {
+                    loginModal.style.display = 'none';
+                    loginModal.classList.remove('fade-out');
+                    loginModal.removeEventListener('animationend', handler);
+                });
+            });
+
+            // Close modal if clicking outside the modal content
+            window.addEventListener('click', function(e) {
+                if (e.target == loginModal) {
+                    loginModal.classList.add('fade-out');
+                    loginModal.addEventListener('animationend', function handler() {
+                        loginModal.style.display = 'none';
+                        loginModal.classList.remove('fade-out');
+                        loginModal.removeEventListener('animationend', handler);
+                    });
+                }
+            });
         });
     </script>
 </body>

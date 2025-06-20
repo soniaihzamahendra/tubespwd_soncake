@@ -10,6 +10,33 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['ro
     $isLoggedIn = true;
 }
 
+// Function to calculate total cart items (either from DB or session)
+// This function needs to be available on pages that display the cart count
+function calculateTotalCartItems($pdo, $isLoggedIn, $userId) {
+    $total_items = 0;
+    if ($isLoggedIn) {
+        try {
+            $stmt = $pdo->prepare("SELECT SUM(quantity) AS total FROM carts WHERE user_id = ?");
+            $stmt->execute([$userId]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            $total_items = (int)($result['total'] ?? 0);
+        } catch (PDOException $e) {
+            error_log("Error calculating total cart items (DB): " . $e->getMessage());
+        }
+    } else {
+        if (isset($_SESSION['guest_cart']) && is_array($_SESSION['guest_cart'])) {
+            foreach ($_SESSION['guest_cart'] as $item) {
+                $total_items += (int)($item['quantity'] ?? 0);
+            }
+        }
+    }
+    return $total_items;
+}
+
+$userId = $isLoggedIn ? $_SESSION['user_id'] : null;
+$totalCartItems = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
+
+
 $sql_products = "SELECT id, name, image_url, price, description, rating FROM products";
 $params = [];
 $where_clauses = [];
@@ -73,6 +100,7 @@ try {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="public/css/user.css">
     <style>
+        /* Your existing CSS for catalog. You can merge this with user.css if preferred */
         .catalog-container {
             display: flex;
             gap: 30px;
@@ -162,7 +190,41 @@ try {
             background-color: var(--hover-pink);
         }
 
+        /* Cart count styling */
+        .cart-link-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        .cart-count {
+            background-color: var(--primary-pink); /* Or any color you prefer */
+            color: white;
+            border-radius: 50%;
+            padding: 2px 7px;
+            font-size: 0.75em;
+            position: absolute;
+            top: -8px; /* Adjust as needed */
+            right: -10px; /* Adjust as needed */
+            min-width: 20px; /* Ensures roundness for single digits */
+            text-align: center;
+            line-height: 1.2;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            font-weight: 600;
+        }
+
         @media (max-width: 992px) {
+            .main-header {
+                flex-direction: column;
+                padding: 10px 15px;
+            }
+            .main-header .main-nav ul {
+                margin-top: 10px;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            .main-header .main-nav ul li {
+                margin: 5px 10px;
+            }
             .catalog-container {
                 flex-direction: column;
             }
@@ -187,8 +249,9 @@ try {
                     <li><a href="katalogawal.php" class="active">Katalog</a></li>
 
                     <li>
-                        <a href="keranjang.php" id="cartLink">
+                        <a href="keranjang_awal.php" class="cart-link-wrapper">
                             <i class="fas fa-shopping-cart"></i> Keranjang
+                            <span class="cart-count" id="cartItemCount"><?php echo $totalCartItems; ?></span>
                         </a>
                     </li>
 
@@ -214,6 +277,11 @@ try {
         <section class="catalog-section section-padding bg-light-pink">
             <div class="container">
                 <h2>Koleksi Kue Kami</h2>
+
+                <form action="katalogawal.php" method="GET" class="search-bar">
+                    <input type="text" name="search" placeholder="Cari produk..." value="<?php echo htmlspecialchars($_GET['search'] ?? ''); ?>">
+                    <button type="submit"><i class="fas fa-search"></i></button>
+                </form>
 
                 <div class="catalog-container">
                     <aside class="sidebar">
@@ -253,7 +321,7 @@ try {
                                             </div>
                                             <p class="product-description"><?php echo htmlspecialchars(substr($product['description'], 0, 100)) . (strlen($product['description']) > 100 ? '...' : ''); ?></p>
                                             <a href="product_detail_awal.php?id=<?php echo $product['id']; ?>" class="btn-secondary">Lihat Detail</a>
-                                            </div>
+                                        </div>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
@@ -332,17 +400,10 @@ try {
             }
         });
 
-        const isLoggedIn = <?php echo $isLoggedIn ? 'true' : 'false'; ?>;
-
-        const cartLink = document.getElementById('cartLink');
-        if (cartLink) {
-            cartLink.addEventListener('click', function(event) {
-                if (!isLoggedIn) {
-                    event.preventDefault();
-                    alert("Anda harus login terlebih dahulu untuk mengakses keranjang.");
-                }
-            });
-        }
+        // --- Perubahan utama di sini ---
+        // Menghapus event listener yang mencegah akses keranjang bagi yang belum login.
+        // Sekarang tautan 'keranjang.php' akan langsung mengarah ke halaman tersebut.
+        // Pastikan keranjang_awal.php sudah siap menangani keranjang tamu.
     });
     </script>
 </body>

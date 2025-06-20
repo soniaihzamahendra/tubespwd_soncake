@@ -1,21 +1,19 @@
 <?php
 session_start();
 require_once 'config/database.php';
+require_once 'includes/cart_functions.php'; // Pastikan ini di-include
 
 $product = null;
 $error_message = '';
 
 $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'user';
 $username = $isLoggedIn ? htmlspecialchars($_SESSION['username']) : '';
+$userId = $isLoggedIn ? $_SESSION['user_id'] : null;
 
-$cart_count = 0;
-if ($isLoggedIn) {
-    if (isset($_SESSION['cart']) && is_array($_SESSION['cart'])) {
-        foreach ($_SESSION['cart'] as $item) {
-            $cart_count += $item['quantity'];
-        }
-    }
-}
+// Gunakan fungsi terpusat untuk menghitung jumlah keranjang
+// Ini akan mengambil dari database jika login, dari sesi jika tamu.
+$cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
+
 
 if (isset($_GET['id']) && is_numeric($_GET['id'])) {
     $product_id = $_GET['id'];
@@ -324,8 +322,8 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
             <div class="product-detail-container">
                 <div class="product-detail-image">
                     <img src="img/<?php echo htmlspecialchars($product['image_url']); ?>"
-                                         alt="<?php echo htmlspecialchars($product['name']); ?>"
-                                         onerror="this.onerror=null;this.src='img/default.png';">
+                                             alt="<?php echo htmlspecialchars($product['name']); ?>"
+                                             onerror="this.onerror=null;this.src='img/default.png';">
                 </div>
                 <div class="product-detail-info">
                     <h1><?php echo htmlspecialchars($product['name']); ?></h1>
@@ -441,6 +439,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Panggil ini saat halaman dimuat untuk menampilkan jumlah awal
     if (cartCountSpan) {
         const initialCount = parseInt(cartCountSpan.textContent);
         updateCartCountDisplay(initialCount);
@@ -451,6 +450,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!isLoggedIn) {
                 event.preventDefault();
                 alert("Anda harus login terlebih dahulu untuk mengakses keranjang.");
+                sessionStorage.setItem('intended_url', window.location.href);
+                window.location.href = 'login.php';
             }
         });
     }
@@ -491,23 +492,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (submitButton) {
                 submitButton.disabled = true;
-                submitButton.textContent = 'Menambahkan...';
+                submitButton.textContent = 'Menambahkan...'; // Mengubah teks tombol saat proses
             }
 
-            const formData = new FormData(this);
-
             try {
+                const formData = new FormData(this); // Mengambil data form
                 const response = await fetch('add_to_cart.php', {
                     method: 'POST',
-                    body: formData
+                    body: new URLSearchParams(formData) // Menggunakan URLSearchParams untuk format x-www-form-urlencoded
                 });
 
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    console.error('Expected JSON response, but got:', response.status, response.statusText, await response.text());
-                    addToCartMessageDiv.textContent = 'Terjadi kesalahan format respons dari server.';
-                    addToCartMessageDiv.classList.add('show', 'error');
-                    return;
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error('Network response was not ok: ' + response.status + ' ' + response.statusText + ' - ' + errorText);
                 }
 
                 const data = await response.json();
@@ -515,33 +512,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     addToCartMessageDiv.textContent = data.message;
                     addToCartMessageDiv.classList.add('show', 'success');
-                    updateCartCountDisplay(data.cart_count);
-
-                    setTimeout(() => {
-                        addToCartMessageDiv.classList.remove('show');
-                        addToCartMessageDiv.textContent = '';
-                    }, 3000);
-
+                    updateCartCountDisplay(data.total_cart_items); // Perbarui bubble keranjang
                 } else {
-                    addToCartMessageDiv.textContent = data.message;
+                    addToCartMessageDiv.textContent = data.message || 'Terjadi kesalahan saat menambahkan produk ke keranjang.';
                     addToCartMessageDiv.classList.add('show', 'error');
                 }
             } catch (error) {
-                console.error('Error adding to cart:', error);
-                addToCartMessageDiv.textContent = 'Terjadi kesalahan jaringan atau server saat menambahkan produk ke keranjang.';
+                console.error('Fetch Error:', error);
+                addToCartMessageDiv.textContent = 'Kesalahan jaringan atau server: ' + error.message;
                 addToCartMessageDiv.classList.add('show', 'error');
             } finally {
+                // Selalu aktifkan kembali tombol setelah proses selesai
                 if (submitButton) {
                     submitButton.disabled = false;
-                    submitButton.textContent = (productStock <= 0) ? 'Stok Habis' : 'Tambah ke Keranjang';
-                }
-                if (data && data.success) {
-                    quantityInput.value = 1;
+                    submitButton.innerHTML = '<i class="fas fa-cart-plus"></i> ' + (productStock <= 0 ? 'Stok Habis' : 'Tambah ke Keranjang');
                 }
             }
         });
     }
 });
-</script>
+    </script>
 </body>
 </html>

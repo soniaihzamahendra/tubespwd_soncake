@@ -132,6 +132,42 @@ try {
                 padding: 6px 10px;
             }
         }
+        /* CSS khusus untuk memperbaiki teks status yang tidak terlihat */
+.order-status {
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: 5px;
+    display: inline-block;
+    font-size: 0.9em;
+    min-width: 100px;
+    text-align: center;
+}
+
+/* Warna status dengan kontras teks yang baik */
+.status-Pending { 
+    background-color: #FFC107; 
+    color: #000; /* Hitam untuk kontras di kuning */
+}
+.status-Processing { 
+    background-color: #17A2B8; 
+    color: #fff; 
+}
+.status-Completed { 
+    background-color: #28A745; 
+    color: #fff;
+}
+.status-Cancelled { 
+    background-color: #DC3545; 
+    color: #fff;
+}
+.status-WaitingforPayment {
+    background-color: #FF9800;
+    color: #000;
+}
+.status-Shipped {
+    background-color: #6F42C1;
+    color: #fff;
+}
     </style>
 </head>
 <body>

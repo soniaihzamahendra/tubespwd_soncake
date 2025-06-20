@@ -1,27 +1,22 @@
 <?php
 session_start();
+// Pastikan path ini benar ke file koneksi database Anda
 require_once 'config/database.php';
+// Include fungsi-fungsi keranjang yang baru
+require_once 'includes/cart_functions.php';
 
 header('Content-Type: application/json');
 
 $response = ['success' => false, 'cart_count' => 0, 'message' => ''];
 
-if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'user') {
-    if (isset($_SESSION['cart']) && is_array($_SESSION['cart'])) {
-        $total_cart_items = 0;
-        foreach ($_SESSION['cart'] as $item) {
-            $total_cart_items += $item['quantity'];
-        }
-        $response['success'] = true;
-        $response['cart_count'] = $total_cart_items;
-    } else {
-        $response['success'] = true;
-        $response['cart_count'] = 0;
-    }
-} else {
-    $response['success'] = true;
-    $response['cart_count'] = 0;
-}
+$isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'user';
+$userId = $isLoggedIn ? $_SESSION['user_id'] : null;
+
+// Gunakan fungsi yang sudah terpusat untuk menghitung total item keranjang
+$totalCartItems = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
+
+$response['success'] = true;
+$response['cart_count'] = $totalCartItems;
 
 echo json_encode($response);
 exit();

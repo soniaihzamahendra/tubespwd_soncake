@@ -1,96 +1,84 @@
 <?php
 session_start();
-require_once 'config/database.php'; 
+require_once 'config/database.php';
+require_once 'includes/cart_functions.php'; // Pastikan ini di-include
 
-if (!isset($_SESSION['user_id'])) {
-    $_SESSION['redirect_after_login'] = 'checkout.php'; 
-    header("Location: login.php");
-    exit();
-}
-if (!isset($_SESSION['cart']) || empty($_SESSION['cart'])) {
-    $_SESSION['message'] = "Keranjang Anda kosong. Silakan tambahkan produk terlebih dahulu.";
-    $_SESSION['message_type'] = "warning";
-    header("Location: keranjang.php");
-    exit();
-}
-
-$cart_items = $_SESSION['cart'];
+$username = '';
+$isLoggedIn = false;
+$cart_items = []; // Inisialisasi array keranjang untuk checkout
 $total_price = 0;
+$userId = null; // Inisialisasi userId
 
-$stock_validation_errors = [];
+if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['role'] === 'user') {
+    $username = htmlspecialchars($_SESSION['username']);
+    $isLoggedIn = true;
+    $userId = $_SESSION['user_id'];
 
-foreach ($cart_items as $product_id => $item) {
-    $item_quantity = isset($item['quantity']) && is_numeric($item['quantity']) ? (int)$item['quantity'] : 0;
-    $item_price = isset($item['price']) && is_numeric($item['price']) ? (float)$item['price'] : 0;
-    $item_name = htmlspecialchars($item['name'] ?? 'Produk Tidak Dikenal'); 
-
-    if ($item_quantity <= 0) {
-        unset($_SESSION['cart'][$product_id]);
-        $stock_validation_errors[] = "Produk '" . $item_name . "' dihapus dari keranjang karena jumlahnya tidak valid.";
-        continue; 
-    }
-
+    // Untuk pengguna yang sudah login, ambil item keranjang dari database
     try {
-        $stmt = $pdo->prepare("SELECT stock FROM products WHERE id = ?");
-        $stmt->execute([$product_id]);
-        $db_product = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$db_product) {
-            unset($_SESSION['cart'][$product_id]);
-            $stock_validation_errors[] = "Produk '" . $item_name . "' tidak ditemukan di katalog dan telah dihapus dari keranjang Anda.";
-        } elseif ($db_product['stock'] < $item_quantity) {
-
-            $_SESSION['cart'][$product_id]['quantity'] = $db_product['stock']; 
-            $total_price += $item_price * $db_product['stock']; 
-            
-            $stock_validation_errors[] = "Stok untuk '" . $item_name . "' tidak mencukupi. Kuantitas disesuaikan dari " . $item_quantity . " menjadi " . $db_product['stock'] . ".";
-        } else {
-            $_SESSION['cart'][$product_id]['stock'] = $db_product['stock']; 
-            $total_price += $item_price * $item_quantity;
+        $stmt = $pdo->prepare("
+            SELECT
+                c.product_id AS id,
+                p.name,
+                p.price,
+                p.image_url,
+                c.quantity,
+                p.stock
+            FROM carts c
+            JOIN products p ON c.product_id = p.id
+            WHERE c.user_id = ?
+        ");
+        $stmt->execute([$userId]);
+        // Ambil hasil dan format ke bentuk array asosiatif dengan product_id sebagai key
+        $db_cart_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($db_cart_items as $item) {
+            $cart_items[$item['id']] = $item;
         }
 
     } catch (PDOException $e) {
-        error_log("Error validating cart item stock: " . $e->getMessage());
-        $stock_validation_errors[] = "Terjadi masalah saat memvalidasi stok untuk '" . $item_name . "'. Harap coba lagi.";
-        unset($_SESSION['cart'][$product_id]); 
+        error_log("Error fetching cart items for logged-in user in checkout.php: " . $e->getMessage());
+        $_SESSION['message'] = 'Terjadi kesalahan saat memuat keranjang Anda. Silakan coba lagi.';
+        $_SESSION['message_type'] = 'error';
+        // Redirect kembali ke keranjang jika gagal memuat
+        header("Location: keranjang.php");
+        exit();
     }
-}
 
-if (!empty($stock_validation_errors)) {
-    $_SESSION['message'] = implode("<br>", $stock_validation_errors);
-    $_SESSION['message_type'] = "error";
-    header("Location: keranjang.php");
+} else {
+    // Jika pengguna TIDAK login, arahkan ke halaman login
+    $_SESSION['intended_url'] = $_SERVER['REQUEST_URI'];
+    $_SESSION['message'] = 'Anda harus login terlebih dahulu untuk melanjutkan checkout.';
+    $_SESSION['message_type'] = 'error';
+    header("Location: login.php");
     exit();
 }
 
-if (empty($_SESSION['cart'])) {
-    $_SESSION['message'] = "Keranjang Anda kosong setelah validasi stok. Silakan tambahkan produk kembali.";
-    $_SESSION['message_type'] = "warning";
-    header("Location: katalog.php");
+// Hitung total harga dari item yang sudah dimuat dari database
+if (empty($cart_items)) {
+    $_SESSION['message'] = 'Keranjang Anda kosong. Silakan tambahkan produk terlebih dahulu.';
+    $_SESSION['message_type'] = 'warning';
+    header("Location: katalog.php"); // Redirect ke katalog jika keranjang kosong
     exit();
 }
 
-$user_id = $_SESSION['user_id'];
-$user_name = '';
-$user_email = '';
-$user_phone = '';
-$user_address = '';
-
-try {
-    $stmt_user = $pdo->prepare("SELECT name, email, phone, address FROM users WHERE id = ?");
-    $stmt_user->execute([$user_id]);
-    $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
-
-    if ($user_data) {
-        $user_name = $user_data['name'];
-        $user_email = $user_data['email'];
-        $user_phone = $user_data['phone'];
-        $user_address = $user_data['address'];
-    }
-} catch (PDOException $e) {
-    error_log("Error fetching user data for checkout: " . $e->getMessage());
+foreach ($cart_items as $item) {
+    $price = isset($item['price']) && is_numeric($item['price']) ? (float)$item['price'] : 0;
+    $quantity = isset($item['quantity']) && is_numeric($item['quantity']) ? (int)$item['quantity'] : 0;
+    $total_price += $price * $quantity;
 }
 
+// Dapatkan jumlah total item di keranjang untuk bubble navigasi (sama seperti di keranjang.php)
+$cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
+
+// Logika untuk menampilkan pesan dari sesi (misalnya dari redirect)
+$message = '';
+$message_type = '';
+if (isset($_SESSION['message'])) {
+    $message = $_SESSION['message'];
+    $message_type = $_SESSION['message_type'] ?? 'info';
+    unset($_SESSION['message']);
+    unset($_SESSION['message_type']);
+}
 ?>
 
 <!DOCTYPE html>
@@ -98,282 +86,132 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Checkout - Sweet Delights</title>
+    <title>Checkout - Soncake</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="public/css/user.css">
     <style>
-        :root {
-            --primary-pink: #FF6B81;
-            --secondary-brown: #8B4513;
-            --cream-white: #FFF8E1;
-            --light-pink-bg: #FFEAEF;
-            --dark-grey-text: #333;
-            --light-grey-text: #777;
-        }
-
-        body {
-            font-family: 'Poppins', sans-serif;
-            margin: 0;
-            padding: 0;
+        .checkout-container {
             background-color: var(--cream-white);
-            color: var(--dark-grey-text);
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+            margin: 40px auto;
+            padding: 30px;
+            max-width: 900px;
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-
-        .main-header {
-            background-color: var(--primary-pink);
-            padding: 15px 0;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .logo a {
-            color: #fff;
-            font-size: 1.8em;
-            font-weight: 700;
-            text-decoration: none;
-            transition: color 0.3s ease;
-        }
-
-        .logo a:hover {
-            color: var(--cream-white);
-        }
-
-        .main-nav ul {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            align-items: center;
-        }
-
-        .main-nav ul li {
-            margin-left: 25px;
-            position: relative;
-        }
-
-        .main-nav ul li a {
-            color: #fff;
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 1.05em;
-            padding: 5px 0;
-            transition: color 0.3s ease, border-bottom 0.3s ease;
-        }
-
-        .main-nav ul li a:hover,
-        .main-nav ul li a.active {
-            color: var(--cream-white);
-            border-bottom: 2px solid var(--cream-white);
-        }
-
-        .dropdown {
-            position: relative;
-            display: inline-block;
-        }
-
-        .dropbtn {
-            background-color: transparent;
-            color: white;
-            padding: 5px 0;
-            font-size: 1.05em;
-            font-weight: 500;
-            border: none;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-        }
-
-        .dropbtn i {
-            margin-right: 8px;
-        }
-
-        .dropdown-content {
-            display: none;
-            position: absolute;
-            background-color: #f9f9f9;
-            min-width: 160px;
-            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-            z-index: 1;
-            border-radius: 8px;
-            overflow: hidden;
-            right: 0;
-            top: 100%;
-        }
-
-        .dropdown-content a {
-            color: var(--dark-grey-text);
-            padding: 12px 16px;
-            text-decoration: none;
-            display: block;
-            text-align: left;
-            font-weight: 400;
-            border-bottom: 1px solid #eee;
-        }
-
-        .dropdown-content a:hover {
-            background-color: var(--light-pink-bg);
-            color: var(--primary-pink);
-            border-bottom: 1px solid var(--primary-pink);
-        }
-
-        .dropdown:hover .dropdown-content {
-            display: block;
-        }
-
-
-        .section-padding {
-            padding: 60px 0;
-        }
-
-        .cart-header {
+        .checkout-header {
             text-align: center;
             margin-bottom: 30px;
             color: var(--secondary-brown);
         }
 
-        .checkout-container {
-            display: flex;
-            flex-wrap: wrap; 
-            gap: 40px;
-            padding: 40px;
-            background-color: #fff; 
-            border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
-            margin: 40px auto;
-            max-width: 1000px;
+        .checkout-summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
         }
 
-        .checkout-form, .order-summary {
-            flex: 1 1 45%;
-            min-width: 300px; 
+        .checkout-summary-table th, .checkout-summary-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
         }
 
-        .checkout-form h3, .order-summary h3 {
+        .checkout-summary-table th {
+            background-color: var(--light-pink-bg);
             color: var(--secondary-brown);
+            font-weight: 600;
+        }
+
+        .checkout-summary-table .item-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .checkout-summary-table .item-info img {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+
+        .checkout-summary-table .item-name {
+            font-weight: 600;
+            color: var(--dark-grey-text);
+        }
+
+        .checkout-total-section {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            padding-top: 20px;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+        }
+
+        .checkout-total {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: var(--secondary-brown);
+        }
+
+        .checkout-total span {
+            color: var(--primary-pink);
+            margin-left: 15px;
+        }
+
+        .shipping-address-section,
+        .payment-method-section {
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+
+        .shipping-address-section h3,
+        .payment-method-section h3 {
+            color: var(--secondary-brown);
+            margin-top: 0;
             margin-bottom: 20px;
             border-bottom: 1px solid rgba(0,0,0,0.1);
             padding-bottom: 10px;
         }
 
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
+        .shipping-address-section label,
+        .payment-method-section label {
             display: block;
             margin-bottom: 8px;
-            font-weight: 500;
+            font-weight: 600;
             color: var(--dark-grey-text);
         }
 
-        .form-group input[type="text"],
-        .form-group input[type="email"],
-        .form-group input[type="tel"],
-        .form-group textarea,
-        .form-group select {
-            width: 100%;
-            padding: 12px;
+        .shipping-address-section input[type="text"],
+        .shipping-address-section textarea,
+        .payment-method-section select {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 15px;
             border: 1px solid #ddd;
-            border-radius: 8px;
+            border-radius: 5px;
             font-size: 1em;
-            box-sizing: border-box; 
-            background-color: #fcfcfc;
-            color: var(--dark-grey-text);
-        }
-        .form-group textarea {
-            resize: vertical;
-            min-height: 80px;
+            box-sizing: border-box;
         }
 
-        .form-group input[type="radio"] {
-            margin-right: 10px;
-        }
-        .payment-methods label {
+        .payment-method-section .payment-option {
             display: flex;
             align-items: center;
             margin-bottom: 10px;
-            cursor: pointer;
+        }
+        .payment-method-section .payment-option input[type="radio"] {
+            margin-right: 10px;
         }
 
-        .order-summary .summary-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            padding-bottom: 10px;
-            border-bottom: 1px dashed rgba(0,0,0,0.05);
-        }
-        .order-summary .summary-item:last-of-type {
-            border-bottom: none;
-            margin-bottom: 0;
-            padding-bottom: 0;
-        }
-
-        .order-summary .summary-item span:first-child {
-            color: var(--dark-grey-text);
-        }
-        .order-summary .summary-item span:last-child {
-            font-weight: 500;
-            color: var(--primary-pink);
-        }
-
-        .order-summary .summary-total {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 2px solid var(--light-pink-bg);
-            font-size: 1.3em;
-            font-weight: 700;
-            color: var(--secondary-brown);
-        }
-        .order-summary .summary-total span:last-child {
-            color: var(--primary-pink);
-        }
-
-        .checkout-button-container {
-            text-align: right;
+        .place-order-btn-container {
+            text-align: center;
             margin-top: 30px;
-            width: 100%; 
-        }
-        .checkout-button-container .btn-primary {
-            width: auto;
-            padding: 15px 30px;
-            font-size: 1.1em;
-            background-color: var(--primary-pink);
-            color: #fff;
-            border: 2px solid var(--primary-pink);
-            border-radius: 30px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-        .checkout-button-container .btn-primary:hover {
-            background-color: #e05c70;
-            border-color: #e05c70;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 10px rgba(255, 107, 129, 0.4);
-        }
-
-        .validation-error {
-            color: red;
-            font-size: 0.9em;
-            margin-top: 5px;
-        }
-        input.is-invalid, textarea.is-invalid, select.is-invalid {
-            border-color: red !important;
         }
 
         .message-box {
@@ -402,36 +240,53 @@ try {
             border: 1px solid #ffeaa7;
         }
 
+        /* Cart badge for header */
+        .cart-badge {
+            background-color: #ff0000;
+            color: white;
+            border-radius: 50%;
+            padding: 2px 7px;
+            font-size: 0.7em;
+            position: relative;
+            top: -8px;
+            left: -5px;
+            white-space: nowrap;
+            vertical-align: super;
+            min-width: 18px;
+            text-align: center;
+            display: inline-block;
+        }
+        .cart-badge.hidden {
+            display: none;
+        }
+
         @media (max-width: 768px) {
             .checkout-container {
-                flex-direction: column;
-                padding: 20px;
                 margin: 20px auto;
-                gap: 20px;
+                padding: 15px;
             }
-            .checkout-form, .order-summary {
-                flex: 1 1 100%;
-                min-width: unset;
+            .checkout-summary-table {
+                font-size: 0.9em;
             }
-            .checkout-button-container {
-                text-align: center;
+            .checkout-summary-table th, .checkout-summary-table td {
+                padding: 10px;
             }
-            .checkout-button-container .btn-primary {
-                width: 100%;
-            }
-            .header-content {
+            .checkout-summary-table .item-info {
                 flex-direction: column;
-                text-align: center;
+                align-items: flex-start;
+                gap: 5px;
             }
-
-            .main-nav ul {
-                margin-top: 15px;
-                flex-wrap: wrap;
-                justify-content: center;
+            .checkout-summary-table .item-info img {
+                width: 40px;
+                height: 40px;
             }
-
-            .main-nav ul li {
-                margin: 0 10px 10px 10px;
+            .checkout-total-section {
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 10px;
+            }
+            .checkout-total {
+                font-size: 1.5em;
             }
         }
     </style>
@@ -441,16 +296,21 @@ try {
     <header class="main-header">
         <div class="container header-content">
             <div class="logo">
-                <a href="user_dashboard.php">Sweet Delights</a>
+                <a href="user_dashboard.php">Soncake</a>
             </div>
             <nav class="main-nav">
                 <ul>
                     <li><a href="user_dashboard.php">Home</a></li>
                     <li><a href="katalog.php">Katalog</a></li>
-                    <li><a href="keranjang.php"><i class="fas fa-shopping-cart"></i> Keranjang</a></li>
-                    <?php if (isset($_SESSION['username'])): ?>
+                    <li>
+                        <a href="keranjang.php" id="cartLink">
+                            <i class="fas fa-shopping-cart"></i> Keranjang
+                            <span id="cart-count" class="cart-badge"><?php echo $cart_count; ?></span>
+                        </a>
+                    </li>
+                    <?php if ($isLoggedIn): ?>
                         <li class="dropdown">
-                            <a href="#" class="dropbtn"><i class="fas fa-user-circle"></i> <?php echo htmlspecialchars($_SESSION['username']); ?> <i class="fas fa-caret-down"></i></a>
+                            <a href="#" class="dropbtn"><i class="fas fa-user-circle"></i> <?php echo $username; ?> <i class="fas fa-caret-down"></i></a>
                             <div class="dropdown-content">
                                 <a href="history_pesanan.php">Pesanan Saya</a>
                                 <a href="user_profile.php">Profil</a>
@@ -469,85 +329,85 @@ try {
     <main>
         <section class="section-padding">
             <div class="container">
-                <h2 class="cart-header">Proses Checkout</h2>
+                <h2 class="checkout-header">Ringkasan Pesanan</h2>
 
-                <?php
-                if (isset($_SESSION['message'])) {
-                    $message_type = $_SESSION['message_type'] ?? 'info';
-                    echo '<div class="message-box ' . htmlspecialchars($message_type) . '">' . $_SESSION['message'] . '</div>';
-                    unset($_SESSION['message']);
-                    unset($_SESSION['message_type']);
-                }
-                ?>
+                <?php if ($message): ?>
+                    <div class="message-box <?php echo htmlspecialchars($message_type); ?>">
+                        <?php echo htmlspecialchars($message); ?>
+                    </div>
+                <?php endif; ?>
 
                 <div class="checkout-container">
-                    <div class="checkout-form">
-                        <h3>Informasi Pengiriman</h3>
-                        <form action="process_checkout.php" method="POST" id="checkoutForm">
-                            <div class="form-group">
-                                <label for="nama_lengkap">Nama Lengkap</label>
-                                <input type="text" id="nama_lengkap" name="nama_lengkap" value="<?php echo htmlspecialchars($user_name); ?>" required>
-                                <div class="validation-error" id="nama_lengkap_error"></div>
-                            </div>
-                            <div class="form-group">
-                                <label for="email">Email</label>
-                                <input type="email" id="email" name="email" value="<?php echo htmlspecialchars($user_email); ?>" required>
-                                <div class="validation-error" id="email_error"></div>
-                            </div>
-                            <div class="form-group">
-                                <label for="telepon">Nomor Telepon</label>
-                                <input type="tel" id="telepon" name="telepon" value="<?php echo htmlspecialchars($user_phone); ?>" required>
-                                <div class="validation-error" id="telepon_error"></div>
-                            </div>
-                            <div class="form-group">
-                                <label for="alamat_pengiriman">Alamat Pengiriman Lengkap</label>
-                                <textarea id="alamat_pengiriman" name="alamat_pengiriman" required><?php echo htmlspecialchars($user_address); ?></textarea>
-                                <div class="validation-error" id="alamat_pengiriman_error"></div>
-                            </div>
-                            <div class="form-group">
-                                <label for="catatan_pesanan">Catatan Pesanan (opsional)</label>
-                                <textarea id="catatan_pesanan" name="catatan_pesanan"></textarea>
-                            </div>
+                    <table class="checkout-summary-table">
+                        <thead>
+                            <tr>
+                                <th>Produk</th>
+                                <th>Harga Satuan</th>
+                                <th>Jumlah</th>
+                                <th>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($cart_items as $product_id => $item): ?>
+                                <tr>
+                                    <td>
+                                        <div class="item-info">
+                                            <img src="img/<?php echo htmlspecialchars($item['image_url']); ?>"
+                                                 alt="<?php echo htmlspecialchars($item['name']); ?>"
+                                                 onerror="this.onerror=null;this.src='img/default.png';">
+                                            <span class="item-name"><?php echo htmlspecialchars($item['name']); ?></span>
+                                        </div>
+                                    </td>
+                                    <td>Rp <?php echo number_format($item['price'], 0, ',', '.'); ?></td>
+                                    <td><?php echo htmlspecialchars($item['quantity']); ?></td>
+                                    <td>Rp <?php echo number_format($item['price'] * $item['quantity'], 0, ',', '.'); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
 
-                            <h3>Metode Pembayaran</h3>
-                            <div class="form-group payment-methods">
-                                <label>
-                                    <input type="radio" name="payment_method" value="COD" required checked>
-                                    Bayar di Tempat (Cash On Delivery)
-                                </label>
-                                <label>
-                                    <input type="radio" name="payment_method" value="Bank Transfer" required>
-                                    Transfer Bank (Konfirmasi Manual)
-                                </label>
-                                <div class="validation-error" id="payment_method_error"></div>
-                            </div>
-
-                            <div class="checkout-button-container">
-                                <button type="submit" class="btn-primary">Konfirmasi Pesanan <i class="fas fa-check-circle"></i></button>
-                            </div>
-                        </form>
-                    </div>
-
-                    <div class="order-summary">
-                        <h3>Ringkasan Pesanan</h3>
-                        <?php 
-                        foreach ($_SESSION['cart'] as $product_id => $item): 
-                            $display_item_price = isset($item['price']) && is_numeric($item['price']) ? (float)$item['price'] : 0;
-                            $display_item_quantity = isset($item['quantity']) && is_numeric($item['quantity']) ? (int)$item['quantity'] : 0;
-                        ?>
-                            <div class="summary-item">
-                                <span><?php echo htmlspecialchars($item['name'] ?? 'Produk Tidak Dikenal'); ?> (x<?php echo htmlspecialchars($display_item_quantity); ?>)</span>
-                                <span>Rp <?php echo number_format($display_item_price * $display_item_quantity, 0, ',', '.'); ?></span>
-                            </div>
-                        <?php endforeach; ?>
-                        <div class="summary-total">
-                            <span>Total Pembayaran:</span>
-                            <span>Rp <?php echo number_format($total_price, 0, ',', '.'); ?></span>
+                    <div class="checkout-total-section">
+                        <div class="checkout-total">
+                            Total Pembayaran: <span id="checkout-total-amount">Rp <?php echo number_format($total_price, 0, ',', '.'); ?></span>
                         </div>
-                        <p style="text-align: center; font-size: 0.9em; color: var(--light-grey-text); margin-top: 20px;">
-                            Dengan mengklik "Konfirmasi Pesanan", Anda menyetujui syarat & ketentuan kami.
-                        </p>
                     </div>
+
+                    <form action="process_checkout.php" method="POST" class="checkout-form">
+                        <div class="shipping-address-section">
+                            <h3>Alamat Pengiriman</h3>
+                            <label for="address_line1">Alamat Lengkap:</label>
+                            <input type="text" id="address_line1" name="address_line1" placeholder="Contoh: Jl. Merdeka No. 10" required>
+
+                            <label for="city">Kota:</label>
+                            <input type="text" id="city" name="city" placeholder="Contoh: Jakarta" required>
+
+                            <label for="postal_code">Kode Pos:</label>
+                            <input type="text" id="postal_code" name="postal_code" placeholder="Contoh: 12345" required>
+
+                            <label for="phone_number">Nomor Telepon:</label>
+                            <input type="text" id="phone_number" name="phone_number" placeholder="Contoh: 081234567890" required>
+
+                            <label for="notes">Catatan Tambahan (Opsional):</label>
+                            <textarea id="notes" name="notes" rows="3" placeholder="Contoh: Tanpa kacang, pesan untuk hadiah."></textarea>
+                        </div>
+
+                        <div class="payment-method-section">
+                            <h3>Metode Pembayaran</h3>
+                            <div class="payment-option">
+                                <input type="radio" id="bank_transfer" name="payment_method" value="Bank Transfer" checked>
+                                <label for="bank_transfer">Transfer Bank</label>
+                            </div>
+                            <div class="payment-option">
+                                <input type="radio" id="cod" name="payment_method" value="COD">
+                                <label for="cod">Cash On Delivery (COD)</label>
+                            </div>
+                            <!-- Opsi pembayaran lainnya dihapus sesuai permintaan -->
+                        </div>
+
+                        <div class="place-order-btn-container">
+                            <button type="submit" class="btn-primary">Konfirmasi Pesanan <i class="fas fa-check-circle"></i></button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </section>
@@ -556,7 +416,7 @@ try {
     <footer class="main-footer">
         <div class="container footer-content">
             <div class="footer-section about">
-                <h3>Tentang Sweet Delights</h3>
+                <h3>Tentang Soncake</h3>
                 <p>Kami menyajikan kue-kue premium dengan bahan terbaik untuk setiap momen spesial Anda.</p>
             </div>
             <div class="footer-section links">
@@ -572,7 +432,7 @@ try {
                 <h3>Hubungi Kami</h3>
                 <p><i class="fas fa-map-marker-alt"></i> Jl. Raya Kue No. 123, Kota Rasa</p>
                 <p><i class="fas fa-phone"></i> (021) 123-4567</p>
-                <p><i class="fas fa-envelope"></i> info@sweetdelights.com</p>
+                <p><i class="fas fa-envelope"></i> info@soncake.com</p>
             </div>
             <div class="footer-section social">
                 <h3>Ikuti Kami</h3>
@@ -582,67 +442,79 @@ try {
             </div>
         </div>
         <div class="footer-bottom">
-            <p>&copy; <?php echo date("Y"); ?> Sweet Delights. All rights reserved.</p>
+            <p>&copy; <?php echo date("Y"); ?> Soncake. All rights reserved.</p>
         </div>
     </footer>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const checkoutForm = document.getElementById('checkoutForm');
-            const inputs = checkoutForm.querySelectorAll('input[required], textarea[required], select[required]');
-
-            checkoutForm.addEventListener('submit', function(event) {
-                let isValid = true;
-
-                inputs.forEach(input => {
-                    const errorElement = document.getElementById(input.id + '_error');
-                    if (errorElement) {
-                        errorElement.textContent = ''; 
-                    }
-
-                    if (!input.checkValidity()) {
-                        isValid = false;
-                        if (errorElement) {
-                            errorElement.textContent = input.validationMessage || 'Bidang ini wajib diisi.';
-                        }
-                        input.classList.add('is-invalid');
+            // Function to update cart count display
+            const cartCountSpan = document.getElementById('cart-count');
+            function updateCartCountDisplay(count) {
+                if (cartCountSpan) {
+                    cartCountSpan.textContent = count;
+                    if (count > 0) {
+                        cartCountSpan.classList.remove('hidden');
                     } else {
-                        input.classList.remove('is-invalid');
+                        cartCountSpan.classList.add('hidden');
                     }
-                });
-
-                const paymentMethodRadios = document.querySelectorAll('input[name="payment_method"]');
-                const paymentMethodError = document.getElementById('payment_method_error');
-                let paymentSelected = false;
-                paymentMethodRadios.forEach(radio => {
-                    if (radio.checked) {
-                        paymentSelected = true;
-                    }
-                });
-
-                if (!paymentSelected) {
-                    isValid = false;
-                    paymentMethodError.textContent = 'Pilih metode pembayaran.';
-                } else {
-                    paymentMethodError.textContent = '';
                 }
+            }
 
+            // Initial cart count display from PHP
+            const initialCartCount = <?php echo $cart_count; ?>;
+            updateCartCountDisplay(initialCartCount);
 
-                if (!isValid) {
-                    event.preventDefault(); 
-                    alert('Mohon lengkapi semua data yang diperlukan dengan benar.');
+            // Handle dropdowns (if present in this page, copy from user_dashboard.php or katalog.php)
+            const dropdowns = document.querySelectorAll('.dropdown');
+            dropdowns.forEach(dropdown => {
+                const dropbtn = dropdown.querySelector('.dropbtn');
+                if (window.innerWidth <= 992) {
+                    dropbtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        document.querySelectorAll('.dropdown').forEach(otherDropdown => {
+                            if (otherDropdown !== dropdown && otherDropdown.classList.contains('active')) {
+                                otherDropdown.classList.remove('active');
+                            }
+                        });
+                        dropdown.classList.toggle('active');
+                    });
                 }
             });
 
-            inputs.forEach(input => {
-                input.addEventListener('input', function() {
-                    const errorElement = document.getElementById(input.id + '_error');
-                    if (errorElement && input.checkValidity()) {
-                        errorElement.textContent = '';
-                        input.classList.remove('is-invalid');
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('.dropdown')) {
+                    document.querySelectorAll('.dropdown').forEach(dropdown => {
+                        dropdown.classList.remove('active');
+                    });
+                }
+            });
+
+            window.addEventListener('resize', function() {
+                if (window.innerWidth > 992) {
+                    document.querySelectorAll('.dropdown').forEach(dropdown => {
+                        dropdown.classList.remove('active');
+                    });
+                }
+            });
+
+            // Prevent checkout if cart is empty on client side (redundant if PHP handles it, but good fallback)
+            const checkoutForm = document.querySelector('.checkout-form');
+            if (checkoutForm) {
+                checkoutForm.addEventListener('submit', function(event) {
+                    const totalAmountElement = document.getElementById('checkout-total-amount');
+                    const totalText = totalAmountElement.textContent;
+                    // Remove "Rp" and format to a number for comparison
+                    const totalValue = parseFloat(totalText.replace('Rp', '').replace(/\./g, '').replace(',', '.'));
+
+                    if (isNaN(totalValue) || totalValue <= 0) {
+                        event.preventDefault();
+                        alert('Keranjang Anda kosong. Silakan tambahkan produk terlebih dahulu sebelum checkout.');
+                        window.location.href = 'katalog.php'; // Redirect to catalog
                     }
                 });
-            });
+            }
         });
     </script>
 </body>

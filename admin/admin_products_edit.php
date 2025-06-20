@@ -255,6 +255,32 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $product) {
             border: 1px solid #eee;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
+        /* CSS khusus untuk tombol edit/simpan */
+.product-form-container button[type="submit"] {
+    background-color: #ff6b81;
+    color: #fff;
+    border: none;
+    padding: 12px 25px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.1em;
+    font-weight: 600;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.product-form-container button[type="submit"]:hover {
+    background-color: #e8455c;
+    transform: translateY(-2px);
+}
+
+.product-form-container button[type="submit"] i {
+    font-size: 1em;
+}
 
     </style>
 </head>

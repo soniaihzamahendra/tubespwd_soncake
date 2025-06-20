@@ -1,22 +1,21 @@
 <?php
 session_start();
 require_once 'config/database.php';
+// Include fungsi-fungsi keranjang yang baru
+require_once 'includes/cart_functions.php';
 
 $username = '';
 $isLoggedIn = false;
+$cart_count = 0;
 
 if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['role'] === 'user') {
     $username = htmlspecialchars($_SESSION['username']);
     $isLoggedIn = true;
-}
-
-$cart_count = 0;
-if ($isLoggedIn) {
-    if (isset($_SESSION['cart']) && is_array($_SESSION['cart'])) {
-        foreach ($_SESSION['cart'] as $item) {
-            $cart_count += $item['quantity'];
-        }
-    }
+    // Gunakan fungsi calculateTotalCartItems untuk mendapatkan jumlah keranjang dari DB
+    $cart_count = calculateTotalCartItems($pdo, true, $_SESSION['user_id']);
+} else {
+    // Jika tidak login, ambil dari sesi tamu
+    $cart_count = calculateTotalCartItems($pdo, false, null);
 }
 
 try {
@@ -217,115 +216,133 @@ $testimonials = [
 
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-    const isLoggedIn = <?php echo $isLoggedIn ? 'true' : 'false'; ?>;
-    const cartCountSpan = document.getElementById('cart-count');
+        // Dapatkan status login dari PHP
+        const isLoggedIn = <?php echo $isLoggedIn ? 'true' : 'false'; ?>;
+        const cartCountSpan = document.getElementById('cart-count');
 
-    function updateCartCountDisplay(count) {
-        if (cartCountSpan) {
-            cartCountSpan.textContent = count;
-            if (count > 0) {
-                cartCountSpan.classList.remove('hidden');
-            } else {
-                cartCountSpan.classList.add('hidden');
-            }
-        }
-    }
-
-    if (cartCountSpan) {
-        const initialCount = parseInt(cartCountSpan.textContent);
-        updateCartCountDisplay(initialCount);
-    }
-
-    const cartLink = document.getElementById('cartLink');
-    if (cartLink) {
-        cartLink.addEventListener('click', function(event) {
-            if (!isLoggedIn) {
-                event.preventDefault();
-                alert("Anda harus login terlebih dahulu untuk mengakses keranjang.");
-            }
-        });
-    }
-
-    const dropdowns = document.querySelectorAll('.dropdown');
-    dropdowns.forEach(dropdown => {
-        const dropbtn = dropdown.querySelector('.dropbtn');
-        if (window.innerWidth <= 992) {
-            dropbtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                document.querySelectorAll('.dropdown').forEach(otherDropdown => {
-                    if (otherDropdown !== dropdown && otherDropdown.classList.contains('active')) {
-                        otherDropdown.classList.remove('active');
-                    }
-                });
-                dropdown.classList.toggle('active');
-            });
-        }
-    });
-
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('.dropdown')) {
-            document.querySelectorAll('.dropdown').forEach(dropdown => {
-                dropdown.classList.remove('active');
-            });
-        }
-    });
-
-    window.addEventListener('resize', function() {
-        if (window.innerWidth > 992) {
-            document.querySelectorAll('.dropdown').forEach(dropdown => {
-                dropdown.classList.remove('active');
-            });
-        }
-    });
-
-    const addToCartButtons = document.querySelectorAll('.add-to-cart-btn');
-
-    addToCartButtons.forEach(button => {
-        button.addEventListener('click', function(event) {
-            event.preventDefault();
-
-            if (!isLoggedIn) {
-                sessionStorage.setItem('intended_url', window.location.href);
-                alert('Anda harus login terlebih dahulu untuk menambahkan produk ke keranjang.');
-                window.location.href = 'login.php';
-                return;
-            }
-
-            const productId = this.dataset.productId;
-            const quantity = 1;
-
-            fetch('add_to_cart.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: new URLSearchParams({
-                    product_id: productId,
-                    quantity: quantity
-                })
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok ' + response.statusText);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    alert(data.message);
-                    updateCartCountDisplay(data.cart_count);
+        // Fungsi untuk memperbarui tampilan jumlah item keranjang
+        function updateCartCountDisplay(count) {
+            if (cartCountSpan) {
+                cartCountSpan.textContent = count;
+                if (count > 0) {
+                    cartCountSpan.classList.remove('hidden');
                 } else {
-                    alert('Gagal menambahkan ke keranjang: ' + data.message);
+                    cartCountSpan.classList.add('hidden');
                 }
-            })
-            .catch(error => {
-                console.error('There was a problem with the fetch operation:', error);
-                alert('Terjadi kesalahan saat menambahkan produk ke keranjang. Silakan coba lagi.');
+            }
+        }
+
+        // Inisialisasi tampilan jumlah keranjang saat halaman dimuat
+        if (cartCountSpan) {
+            const initialCount = parseInt(cartCountSpan.textContent);
+            updateCartCountDisplay(initialCount);
+        }
+
+        // Event listener untuk link keranjang (mencegah akses jika belum login)
+        const cartLink = document.getElementById('cartLink');
+        if (cartLink) {
+            cartLink.addEventListener('click', function(event) {
+                if (!isLoggedIn) {
+                    event.preventDefault(); // Mencegah navigasi langsung
+                    // Menggunakan modal kustom atau pop-up daripada alert()
+                    // Untuk contoh ini, saya akan tetap menggunakan alert() seperti permintaan sebelumnya
+                    alert("Anda harus login terlebih dahulu untuk mengakses keranjang.");
+                    window.location.href = 'login.php'; // Redirect ke halaman login
+                }
+            });
+        }
+
+        // Logika dropdown untuk navigasi mobile/responsive
+        const dropdowns = document.querySelectorAll('.dropdown');
+        dropdowns.forEach(dropdown => {
+            const dropbtn = dropdown.querySelector('.dropbtn');
+            if (window.innerWidth <= 992) { // Contoh breakpoint untuk mobile
+                dropbtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation(); // Mencegah event menyebar ke body
+                    // Tutup dropdown lain yang terbuka
+                    document.querySelectorAll('.dropdown').forEach(otherDropdown => {
+                        if (otherDropdown !== dropdown && otherDropdown.classList.contains('active')) {
+                            otherDropdown.classList.remove('active');
+                        }
+                    });
+                    dropdown.classList.toggle('active'); // Toggle aktif/nonaktif dropdown ini
+                });
+            }
+        });
+
+        // Tutup dropdown jika mengklik di luar area dropdown
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.dropdown')) {
+                document.querySelectorAll('.dropdown').forEach(dropdown => {
+                    dropdown.classList.remove('active');
+                });
+            }
+        });
+
+        // Tangani perubahan ukuran jendela untuk reset dropdown
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 992) {
+                document.querySelectorAll('.dropdown').forEach(dropdown => {
+                    dropdown.classList.remove('active');
+                });
+            }
+        });
+
+        // Logika untuk tombol "Tambah ke Keranjang"
+        const addToCartButtons = document.querySelectorAll('.add-to-cart-btn');
+
+        addToCartButtons.forEach(button => {
+            button.addEventListener('click', function(event) {
+                event.preventDefault(); // Mencegah tindakan default tombol
+
+                // Jika pengguna belum login, arahkan ke halaman login
+                if (!isLoggedIn) {
+                    // Simpan URL saat ini agar bisa kembali setelah login
+                    sessionStorage.setItem('intended_url', window.location.href);
+                    alert('Anda harus login terlebih dahulu untuk menambahkan produk ke keranjang.');
+                    window.location.href = 'login.php';
+                    return; // Hentikan eksekusi selanjutnya
+                }
+
+                const productId = this.dataset.productId; // Ambil ID produk dari data-attribute
+                const quantity = 1; // Default quantity 1 saat ditambahkan dari daftar produk
+
+                // Lakukan fetch API ke add_to_cart.php
+                fetch('add_to_cart.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded', // Kirim data dalam format form
+                    },
+                    body: new URLSearchParams({ // Buat body request dari parameter
+                        product_id: productId,
+                        quantity: quantity
+                    })
+                })
+                .then(response => {
+                    // Cek apakah response OK
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok ' + response.statusText);
+                    }
+                    return response.json(); // Parse response sebagai JSON
+                })
+                .then(data => {
+                    // Tangani response dari server
+                    if (data.success) {
+                        alert(data.message); // Tampilkan pesan sukses
+                        updateCartCountDisplay(data.total_cart_items); // Perbarui bubble keranjang
+                    } else {
+                        alert('Gagal menambahkan ke keranjang: ' + data.message); // Tampilkan pesan gagal
+                    }
+                })
+                .catch(error => {
+                    // Tangani kesalahan jaringan atau parsing JSON
+                    console.error('Ada masalah dengan operasi fetch:', error);
+                    alert('Terjadi kesalahan saat menambahkan produk ke keranjang. Silakan coba lagi.');
+                });
             });
         });
     });
-});
     </script>
 </body>
 </html>

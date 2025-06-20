@@ -243,27 +243,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
             </div>
 
             <hr style="margin: 30px 0; border-top: 1px solid #eee;">
-
-            <h2>Ubah Profil</h2>
-            <form action="admin_profile.php" method="POST">
-                <div class="form-group">
-                    <label for="username">Username Baru:</label>
-                    <input type="text" id="username" name="username" value="<?php echo $admin_username; ?>" required>
-                </div>
-                <div class="form-group">
-                    <label for="email">Email Baru:</label>
-                    <input type="email" id="email" name="email" value="<?php echo $admin_email; ?>" required>
-                </div>
-                <div class="form-group">
-                    <label for="password">Password Baru (kosongkan jika tidak ingin mengubah):</label>
-                    <input type="password" id="password" name="password">
-                </div>
-                <div class="form-group">
-                    <label for="confirm_password">Konfirmasi Password Baru:</label>
-                    <input type="password" id="confirm_password" name="confirm_password">
-                </div>
-                <button type="submit" name="update_profile" class="btn-update-profile">Perbarui Profil</button>
-            </form>
         </div>
     </main>
 

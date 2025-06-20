@@ -1,25 +1,24 @@
 <?php
 session_start();
 require_once 'config/database.php';
+require_once 'includes/cart_functions.php'; // Pastikan ini di-include
 
-$username = ''; 
-$isLoggedIn = false; 
+$username = '';
+$isLoggedIn = false;
+$userId = null; // Inisialisasi userId
 
 if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && $_SESSION['role'] === 'user') {
     $username = htmlspecialchars($_SESSION['username']);
     $isLoggedIn = true;
+    $userId = $_SESSION['user_id'];
 }
 
-$cart_count = 0;
-if ($isLoggedIn) { 
-    if (isset($_SESSION['cart']) && is_array($_SESSION['cart'])) {
-        foreach ($_SESSION['cart'] as $item) {
-            $cart_count += $item['quantity'];
-        }
-    }
-}
+// Gunakan fungsi terpusat untuk menghitung jumlah keranjang
+// Ini akan mengambil dari database jika login, dari sesi jika tamu.
+$cart_count = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
 
-$sql_products = "SELECT id, name, image_url, price, description, rating FROM products";
+
+$sql_products = "SELECT id, name, image_url, price, description, rating, stock FROM products"; // Tambahkan stock
 $params = [];
 $where_clauses = [];
 
@@ -34,10 +33,11 @@ if (isset($_GET['category_name']) && !empty($_GET['category_name'])) {
             $where_clauses[] = "category_id = ?";
             $params[] = $category_info['id'];
         } else {
+            // Kategori tidak ditemukan, biarkan $where_clauses kosong agar menampilkan semua produk jika kategori tidak valid
         }
     } catch (PDOException $e) {
         error_log("Error fetching category ID: " . $e->getMessage());
-       
+        // Handle error, e.g., display a message
     }
 }
 
@@ -87,7 +87,7 @@ try {
         .catalog-container {
             display: flex;
             gap: 30px;
-            padding-top: 30px; 
+            padding-top: 30px;
         }
 
         .sidebar {
@@ -97,8 +97,8 @@ try {
             border-radius: 15px;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
             padding: 20px;
-            height: fit-content; 
-            position: sticky; 
+            height: fit-content;
+            position: sticky;
             top: 100px;
         }
 
@@ -139,7 +139,7 @@ try {
         }
 
         .product-grid {
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         }
 
         .no-products-message {
@@ -179,24 +179,24 @@ try {
             }
             .sidebar {
                 width: 100%;
-                position: static; 
+                position: static;
                 margin-bottom: 30px;
             }
         }
         .cart-badge {
             background-color: #ff0000;
             color: white;
-            border-radius: 50%; 
-            padding: 2px 7px; 
-            font-size: 0.7em; 
+            border-radius: 50%;
+            padding: 2px 7px;
+            font-size: 0.7em;
             position: relative;
-            top: -8px; 
-            left: -5px; 
-            white-space: nowrap; 
-            vertical-align: super; 
-            min-width: 18px; 
+            top: -8px;
+            left: -5px;
+            white-space: nowrap;
+            vertical-align: super;
+            min-width: 18px;
             text-align: center;
-            display: inline-block; 
+            display: inline-block;
         }
         .cart-badge.hidden {
             display: none;
@@ -266,6 +266,11 @@ try {
                     </aside>
 
                     <div class="catalog-products">
+                        <form class="search-bar" action="katalog.php" method="GET">
+                            <input type="text" name="search" placeholder="Cari produk..." value="<?php echo htmlspecialchars($_GET['search'] ?? ''); ?>">
+                            <button type="submit"><i class="fas fa-search"></i></button>
+                        </form>
+
                         <?php if (empty($products)): ?>
                             <p class="no-products-message">Maaf, tidak ada produk yang ditemukan untuk kriteria ini.</p>
                         <?php else: ?>
@@ -283,7 +288,10 @@ try {
                                             </div>
                                             <p class="product-description"><?php echo htmlspecialchars(substr($product['description'], 0, 100)) . (strlen($product['description']) > 100 ? '...' : ''); ?></p>
                                             <a href="product_detail.php?id=<?php echo $product['id']; ?>" class="btn-secondary">Lihat Detail</a>
-                                            </div>
+                                            <button type="button" class="btn-primary add-to-cart-btn" data-product-id="<?php echo $product['id']; ?>" <?php echo ($product['stock'] <= 0) ? 'disabled' : ''; ?>>
+                                                <i class="fas fa-cart-plus"></i> <?php echo ($product['stock'] <= 0) ? 'Stok Habis' : 'Tambah ke Keranjang'; ?>
+                                            </button>
+                                        </div>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
@@ -345,6 +353,7 @@ try {
             }
         }
 
+        // Inisialisasi bubble keranjang saat halaman dimuat
         if (cartCountSpan) {
             const initialCount = parseInt(cartCountSpan.textContent);
             updateCartCountDisplay(initialCount);
@@ -353,8 +362,11 @@ try {
         if (cartLink) {
             cartLink.addEventListener('click', function(event) {
                 if (!isLoggedIn) {
-                    event.preventDefault(); 
-                    alert("Anda harus login terlebih dahulu untuk mengakses keranjang."); 
+                    event.preventDefault();
+                    // Menggunakan modal kustom atau pop-up daripada alert()
+                    alert("Anda harus login terlebih dahulu untuk mengakses keranjang.");
+                    sessionStorage.setItem('intended_url', window.location.href); // Simpan URL saat ini
+                    window.location.href = 'login.php'; // Redirect ke halaman login
                 }
             });
         }
@@ -362,7 +374,7 @@ try {
         const dropdowns = document.querySelectorAll('.dropdown');
         dropdowns.forEach(dropdown => {
             const dropbtn = dropdown.querySelector('.dropbtn');
-            if (window.innerWidth <= 992) { 
+            if (window.innerWidth <= 992) {
                 dropbtn.addEventListener('click', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -392,7 +404,53 @@ try {
             }
         });
 
-        
+        // Event listener untuk tombol "Tambah ke Keranjang" di halaman katalog
+        const addToCartButtons = document.querySelectorAll('.add-to-cart-btn');
+
+        addToCartButtons.forEach(button => {
+            button.addEventListener('click', function(event) {
+                event.preventDefault();
+
+                if (!isLoggedIn) {
+                    sessionStorage.setItem('intended_url', window.location.href);
+                    alert('Anda harus login terlebih dahulu untuk menambahkan produk ke keranjang.');
+                    window.location.href = 'login.php';
+                    return;
+                }
+
+                const productId = this.dataset.productId;
+                const quantity = 1; // Default quantity 1
+
+                fetch('add_to_cart.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        product_id: productId,
+                        quantity: quantity
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        updateCartCountDisplay(data.total_cart_items); // Update bubble
+                    } else {
+                        alert('Gagal menambahkan ke keranjang: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Ada masalah dengan operasi fetch:', error);
+                    alert('Terjadi kesalahan saat menambahkan produk ke keranjang. Silakan coba lagi.');
+                });
+            });
+        });
     });
     </script>
 </body>

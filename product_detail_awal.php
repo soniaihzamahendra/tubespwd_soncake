@@ -8,6 +8,33 @@ $error_message = '';
 $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'user';
 $username = $isLoggedIn ? htmlspecialchars($_SESSION['username']) : '';
 
+// Function to calculate total cart items (either from DB or session)
+// This function needs to be available on pages that display the cart count
+function calculateTotalCartItems($pdo, $isLoggedIn, $userId) {
+    $total_items = 0;
+    if ($isLoggedIn) {
+        try {
+            $stmt = $pdo->prepare("SELECT SUM(quantity) AS total FROM carts WHERE user_id = ?");
+            $stmt->execute([$userId]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            $total_items = (int)($result['total'] ?? 0);
+        } catch (PDOException $e) {
+            error_log("Error calculating total cart items (DB): " . $e->getMessage());
+        }
+    } else {
+        if (isset($_SESSION['guest_cart']) && is_array($_SESSION['guest_cart'])) {
+            foreach ($_SESSION['guest_cart'] as $item) {
+                $total_items += (int)($item['quantity'] ?? 0);
+            }
+        }
+    }
+    return $total_items;
+}
+
+$userId = $isLoggedIn ? $_SESSION['user_id'] : null;
+$totalCartItems = calculateTotalCartItems($pdo, $isLoggedIn, $userId);
+
+
 if (isset($_GET['id']) && is_numeric($_GET['id'])) {
     $product_id = $_GET['id'];
 
@@ -200,6 +227,28 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
             font-size: 1.2em;
         }
 
+        /* Cart count styling */
+        .cart-link-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        .cart-count {
+            background-color: var(--primary-pink); /* Or any color you prefer */
+            color: white;
+            border-radius: 50%;
+            padding: 2px 7px;
+            font-size: 0.75em;
+            position: absolute;
+            top: -8px; /* Adjust as needed */
+            right: -10px; /* Adjust as needed */
+            min-width: 20px; /* Ensures roundness for single digits */
+            text-align: center;
+            line-height: 1.2;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            font-weight: 600;
+        }
+
         @media (max-width: 768px) {
             .main-header {
                 flex-direction: column;
@@ -252,8 +301,9 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
                     <li><a href="katalogawal.php">Katalog</a></li>
 
                     <li>
-                        <a href="keranjang.php" id="cartLink">
+                        <a href="keranjang_awal.php" id="cartLink" class="cart-link-wrapper">
                             <i class="fas fa-shopping-cart"></i> Keranjang
+                            <span class="cart-count" id="cartItemCount"><?php echo $totalCartItems; ?></span>
                         </a>
                     </li>
 
@@ -280,8 +330,8 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
             <div class="product-detail-container">
                 <div class="product-detail-image">
                     <img src="img/<?php echo htmlspecialchars($product['image_url']); ?>"
-                                 alt="<?php echo htmlspecialchars($product['name']); ?>"
-                                 onerror="this.onerror=null;this.src='img/default.png';">
+                                         alt="<?php echo htmlspecialchars($product['name']); ?>"
+                                         onerror="this.onerror=null;this.src='img/default.png';">
                 </div>
                 <div class="product-detail-info">
                     <h1><?php echo htmlspecialchars($product['name']); ?></h1>
@@ -293,7 +343,7 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
                     <p class="stock">Stok Tersedia: <?php echo htmlspecialchars($product['stock']); ?></p>
                     <p class="description"><?php echo nl2br(htmlspecialchars($product['description'])); ?></p>
 
-                    <form class="add-to-cart-form" id="addToCartForm" action="add_to_cart.php" method="post">
+                    <form class="add-to-cart-form" id="addToCartForm">
                         <input type="hidden" name="product_id" value="<?php echo htmlspecialchars($product['id']); ?>">
                         <label for="quantity">Jumlah:</label>
                         <input type="number" id="quantity" name="quantity" value="1" min="1" max="<?php echo htmlspecialchars($product['stock']); ?>" required>
@@ -345,6 +395,7 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
 
     <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Dropdown menu logic
         const dropdowns = document.querySelectorAll('.dropdown');
         dropdowns.forEach(dropdown => {
             const dropbtn = dropdown.querySelector('.dropbtn');
@@ -378,32 +429,42 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
             }
         });
 
-        const isLoggedIn = <?php echo $isLoggedIn ? 'true' : 'false'; ?>;
-
-        const cartLink = document.getElementById('cartLink');
-        if (cartLink) {
-            cartLink.addEventListener('click', function(event) {
-                if (!isLoggedIn) {
-                    event.preventDefault();
-                    alert("Anda harus login terlebih dahulu untuk mengakses keranjang.");
-                }
-            });
-        }
-
+        // Cart functionality
         const addToCartForm = document.getElementById('addToCartForm');
+        const cartItemCountSpan = document.getElementById('cartItemCount');
 
         if (addToCartForm) {
-            addToCartForm.addEventListener('submit', function(event) {
+            addToCartForm.addEventListener('submit', async function(event) {
+                event.preventDefault(); // Prevent default form submission
+
                 const submitButton = this.querySelector('.btn-add-to-cart');
                 if (submitButton && submitButton.disabled) {
-                    event.preventDefault();
-                    return;
+                    return; // Do nothing if button is disabled (out of stock)
                 }
 
-                if (!isLoggedIn) {
-                    event.preventDefault();
-                    sessionStorage.setItem('intended_url', window.location.href);
-                    alert('Anda harus login terlebih dahulu untuk menambahkan produk ke keranjang.');
+                const productId = this.querySelector('input[name="product_id"]').value;
+                const quantity = this.querySelector('input[name="quantity"]').value;
+
+                const formData = new FormData();
+                formData.append('product_id', productId);
+                formData.append('quantity', quantity);
+
+                try {
+                    const response = await fetch('add_to_cart.php', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
+
+                    alert(data.message); // Show the message from the server
+
+                    if (data.success) {
+                        // Update cart count if the item was added successfully
+                        cartItemCountSpan.textContent = data.total_cart_items;
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Terjadi kesalahan saat menambahkan produk ke keranjang. Mohon coba lagi.');
                 }
             });
         }
